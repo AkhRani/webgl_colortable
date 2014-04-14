@@ -16,7 +16,7 @@ function ColorAdjuster() {
       precision highp float;\n\
       varying highp vec2 vTextureCoord;\n\
       uniform sampler2D uDataSampler;\n\
-      uniform sampler2D uWindowSampler;\n\
+      uniform sampler2D uColorSampler;\n\
   \
       void main(void) {\n\
         vec4 data = texture2D(uDataSampler, vTextureCoord);\n\
@@ -27,7 +27,7 @@ function ColorAdjuster() {
         /* I don't like the .01 in the 273.01 below.  There's something */\n\
         /* I'm missing about the component value scaling, and without the */\n\
         /* .01 a fully saturated value overruns the color lookup texture */\n\
-        gl_FragColor = texture2D(uWindowSampler, \n\
+        gl_FragColor = texture2D(uColorSampler, \n\
             vec2((data.w +                \n\
                  (data.z * 16.0) +      \n\
                  (data.y * 256.0)) / 273.01, .5));\n\
@@ -190,7 +190,7 @@ function ColorAdjuster() {
     gl.enableVertexAttribArray(this.textureCoordAttribute);
 
     this.dataSamplerUniform = gl.getUniformLocation(program, "uDataSampler");
-    this.windowSamplerUniform = gl.getUniformLocation(program, "uWindowSampler");
+    this.windowSamplerUniform = gl.getUniformLocation(program, "uColorSampler");
   }
 
   this.drawImage = function() {
@@ -233,7 +233,7 @@ function ColorAdjuster() {
         gl.UNSIGNED_SHORT_4_4_4_4, data);
   }
 
-  this.setWindow = function(range, start) {
+  this.setWindow = function(width, start) {
     var data = new Uint8Array(4096 * 3);
     var i;
     for (i = 0; i < start && i < 4096; i++) {
@@ -241,8 +241,8 @@ function ColorAdjuster() {
       data[i*3+1] = 0;
       data[i*3+2] = 0;
     }
-    for (; i < start+range && i < 4096; i++) {
-      var scaledValue = (i - start) * 255.0 / range;
+    for (; i < start+width && i < 4096; i++) {
+      var scaledValue = (i - start) * 255.0 / width;
       data[i*3+0] = scaledValue;
       data[i*3+1] = scaledValue;
       data[i*3+2] = scaledValue;
@@ -253,6 +253,10 @@ function ColorAdjuster() {
       data[i*3+2] = 255;
     }
     this.setColorTable(data);
+  }
+
+  this.setWindowWidthAndCenter = function(width, center) {
+    this.setWindow(width, center - width/2);
   }
 
   this.setColorTable = function(data) {
