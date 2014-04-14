@@ -3,26 +3,43 @@
     <head>
         <meta charset="UTF-8">
         <title>Web GL Color Lookup</title>
-        <script src="webgl.js"></script>
-        <script id="fragment-shader" type="x-shader/x-fragment">
-          varying lowp vec2 vTextureCoord;
-          uniform sampler2D uSampler;
+        <script src="coloradjuster.js"></script>
+        <script>
+          adjuster = new ColorAdjuster();
 
-          void main(void) {
-            gl_FragColor = texture2D(uSampler, vTextureCoord);
+          function start() {
+            var canvas = document.getElementById("glcanvas");
+            adjuster.init(canvas);
+            adjuster.setWindow(4096, 0);
+
+            // This is the simulated image data.
+            var data = new Uint16Array(4096);
+            for (i = 0; i < 4096; i++) {
+              data[i] = i;
+            }
+            adjuster.setImageData(data, 64, 64);
+            adjuster.drawImage();
+
+            document.getElementById("windowControl").
+              addEventListener("input", onWindowChanged, false);
+            document.getElementById("levelControl").
+              addEventListener("input", onWindowChanged, false);
           }
-        </script>
 
-        <script id="vertex-shader" type="x-shader/x-vertex">
-          attribute vec3 aVertexPosition;
-          attribute vec2 aTextureCoord;
+          function onWindowChanged(evt) {
+            var windowControl = document.getElementById("windowControl");
+            var levelControl =  document.getElementById("levelControl");
 
-          varying lowp vec2 vTextureCoord;
 
-          void main(void) {
-            gl_Position = vec4(aVertexPosition, 1.0);
-            vTextureCoord = aTextureCoord;
+            // Rescale window range from 256 to 4095
+            var range = windowControl.value * 16;
+            var level = levelControl.value / 256.0;
+            var start = (4096 - range) * level;
+
+            adjuster.setWindow(range, start);
+            adjuster.drawImage();
           }
+
         </script>
     </head>
 

@@ -1,0 +1,267 @@
+function ColorAdjuster() {
+  var g_vertexShader = "\
+    attribute vec3 aVertexPosition;\n\
+    attribute vec2 aTextureCoord;\n\
+  \
+    varying highp vec2 vTextureCoord;\n\
+  \
+    void main(void) {\n\
+      gl_Position = vec4(aVertexPosition, 1.0);\n\
+      vTextureCoord = aTextureCoord;\n\
+    }\n\
+    ";
+
+
+  var g_fragmentShader = "\
+      precision highp float;\n\
+      varying highp vec2 vTextureCoord;\n\
+      uniform sampler2D uDataSampler;\n\
+      uniform sampler2D uWindowSampler;\n\
+  \
+      void main(void) {\n\
+        vec4 data = texture2D(uDataSampler, vTextureCoord);\n\
+        /* Use the 4-bit color components of the data sample to generate */\n\
+        /* a texture coordinate in our color lookup table.  This would be */\n\
+        /* simpler if webgl supported 3D textures */\n\
+          \
+        /* I don't like the .01 in the 273.01 below.  There's something */\n\
+        /* I'm missing about the component value scaling, and without the */\n\
+        /* .01 a fully saturated value overruns the color lookup texture */\n\
+        gl_FragColor = texture2D(uWindowSampler, \n\
+            vec2((data.w +                \n\
+                 (data.z * 16.0) +      \n\
+                 (data.y * 256.0)) / 273.01, .5));\n\
+      }\n\
+  ";
+
+
+  this.gl = null;
+  this.vertexPositionAttribute = null;
+  this.textureCoordAttribute = null;
+  this.dataSamplerUniform = null;
+  this.windowSamplerUniform = null;
+  this.squareVerticesBuffer = null;
+  this.textureCoordBuffer = null;
+  this.squareArray = null;
+  this.textureArray = null;
+  this.dataTexture = null;
+  this.windowTexture = null;
+
+  this.init = function(canvas) {
+
+    this.gl = initWebGL(canvas);
+
+    if (this.gl) {
+      this.initShaders();
+      this.initBuffers();
+      this.initTextures();
+    }
+  }
+
+  function initWebGL(canvas) {
+    var gl = null;
+    try {
+      // Try to grab the standard context, fallback to experimental.
+      gl = canvas.getContext("webgl") ||
+           canvas.getContext("experimental-webgl");
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    }
+    catch(e) {}
+
+    // If we don't have a GL context, give up now
+    if (!gl) {
+      alert("Unable to initialize WebGL. Your browser may not support it.");
+    }
+    return gl;
+  }
+
+  this.initBuffers = function()
+  {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
+    // Create GL buffer to hold vertex screen coordinates
+    this.squareVerticesBuffer = gl.createBuffer();
+
+    // Create JS array to hold vertex screen coordinates
+    // Default GL screen coordinate system.  [-1,1] in each dimension
+    var square = [
+      -1.0, -1.0, 0.0,      // bottom left
+      -1.0, 1.0, 0.0,       // top left
+      1.0, -1.0, 0.0,       // bottom right
+      1.0, 1.0, 0.0         // top right
+    ]
+    this.squareArray = new Float32Array(square);
+
+
+    // Create GL buffer to hold vertex texture coordinates
+    this.textureCoordBuffer = gl.createBuffer();
+
+    // Create JS array to hold vertex texture coordinates
+    // GL Texture coordinate system, [0,1] in each dimension.
+    var textureCoords = [
+      0.0, 0.0,         // bottom left
+      0.0, 1.0,       // top left
+      1.0, 0.0,       // bottom right
+      1.0, 1.0      // top right
+    ];
+    this.textureArray = new Float32Array(textureCoords);
+  }
+
+  this.initTextures = function() {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
+    this.dataTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+
+
+    // This is the color lookup table, which translates the 12-bit image
+    // colors to screen colors.  
+    var data = new Uint8Array(4096 * 3);
+    for (i = 0; i < 4096; i++) {
+      var scaledValue = i/16;
+      data[i*3+0] = scaledValue;
+      data[i*3+1] = scaledValue;
+      data[i*3+2] = scaledValue;
+    }
+
+    this.windowTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  }
+
+
+  function compileShader(gl, shaderSource, type) {
+    // Create a shader
+    var shader = gl.createShader(type);
+    if (shader) {
+      // Compile the source
+      gl.shaderSource(shader, shaderSource);
+      gl.compileShader(shader);
+
+      // See if it compiled successfully
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        alert("An error occurred compiling a shader: " +
+            gl.getShaderInfoLog(shader));
+        shader = null;
+      }
+    }
+    else {
+      alert ("Failed to create shader");
+    }
+    return shader;
+  }
+
+  this.initShaders = function() {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
+    var fragmentShader =
+        compileShader(gl, g_fragmentShader, gl.FRAGMENT_SHADER);
+
+    var vertexShader =
+        compileShader(gl, g_vertexShader, gl.VERTEX_SHADER);
+
+    var program = gl.createProgram();
+    gl.attachShader(program, fragmentShader);
+    gl.attachShader(program, vertexShader);
+    gl.linkProgram(program);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      alert ("Unable to initialize WebGL");
+    }
+
+    // Now that we've built the shader program, we can find the IDs of the
+    // shader program variables.
+    gl.useProgram(program);
+    this.vertexPositionAttribute =
+         gl.getAttribLocation(program, "aVertexPosition");
+    gl.enableVertexAttribArray(this.vertexPositionAttribute);
+
+    this.textureCoordAttribute = gl.getAttribLocation(program, "aTextureCoord");
+    gl.enableVertexAttribArray(this.textureCoordAttribute);
+
+    this.dataSamplerUniform = gl.getUniformLocation(program, "uDataSampler");
+    this.windowSamplerUniform = gl.getUniformLocation(program, "uWindowSampler");
+  }
+
+  this.drawImage = function() {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // Copy screen coordinates to GL
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.squareArray, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(this.vertexPositionAttribute,
+        3, gl.FLOAT, false, 0, 0);
+
+    // Copy texture coordinates to GL
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.textureCoordBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.textureArray, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(this.textureCoordAttribute,
+        2, gl.FLOAT, false, 0, 0);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+    gl.uniform1i(this.dataSamplerUniform, 0);
+
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
+    gl.uniform1i(this.windowSamplerUniform, 1);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  this.setImageData = function(data, width, height) {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
+    gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA,
+        gl.UNSIGNED_SHORT_4_4_4_4, data);
+  }
+
+  this.setWindow = function(range, start) {
+    var data = new Uint8Array(4096 * 3);
+    var i;
+    for (i = 0; i < start && i < 4096; i++) {
+      data[i*3+0] = 0;
+      data[i*3+1] = 0;
+      data[i*3+2] = 0;
+    }
+    for (; i < start+range && i < 4096; i++) {
+      var scaledValue = (i - start) * 255.0 / range;
+      data[i*3+0] = scaledValue;
+      data[i*3+1] = scaledValue;
+      data[i*3+2] = scaledValue;
+    }
+    for (; i < 4096; i++) {
+      data[i*3+0] = 255;
+      data[i*3+1] = 255;
+      data[i*3+2] = 255;
+    }
+    this.setColorTable(data);
+  }
+
+  this.setColorTable = function(data) {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
+    gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 4096, 1, 0, gl.RGB,
+        gl.UNSIGNED_BYTE, data);
+  }
+}
