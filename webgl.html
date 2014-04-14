@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Web GL Color Lookup</title>
+        <script src="webgl.js"></script>
+        <script id="fragment-shader" type="x-shader/x-fragment">
+          varying lowp vec2 vTextureCoord;
+          uniform sampler2D uSampler;
+
+          void main(void) {
+            gl_FragColor = texture2D(uSampler, vTextureCoord);
+          }
+        </script>
+
+        <script id="vertex-shader" type="x-shader/x-vertex">
+          attribute vec3 aVertexPosition;
+          attribute vec2 aTextureCoord;
+
+          varying lowp vec2 vTextureCoord;
+
+          void main(void) {
+            gl_Position = vec4(aVertexPosition, 1.0);
+            vTextureCoord = aTextureCoord;
+          }
+        </script>
+    </head>
+
+    <body onload="start()">
+      <canvas id="glcanvas" width="256" height="256">
+      Missing canvas support
+      </canvas>
+      </br>
+      <input id="windowControl" type="range" min="16" max="256" value="256" >Window</input></br>
+      <input id="levelControl" type="range" min="0" max="255" value="128" >Level</input></br>
+    </body>
+
+</html>
+
