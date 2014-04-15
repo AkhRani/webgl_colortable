@@ -10,20 +10,20 @@
           function start() {
             var canvas = document.getElementById("glcanvas");
             adjuster.init(canvas);
-            adjuster.setWindow(4096, 0);
 
-            // This is the simulated image data.
-            var data = new Uint16Array(4096);
-            for (i = 0; i < 4096; i++) {
-              data[i] = i;
-            }
-            adjuster.setImageData(data, 64, 64);
-            adjuster.drawImage();
+            adjuster.setWindow(4096, 0);
+            onGradientButton(null);
 
             document.getElementById("windowControl").
               addEventListener("input", onWindowChanged, false);
             document.getElementById("levelControl").
               addEventListener("input", onWindowChanged, false);
+            document.getElementById("gradientButton").
+              addEventListener("click", onGradientButton, false);
+            document.getElementById("NPOTEvenButton").
+              addEventListener("click", onNpotEvenButton, false);
+            document.getElementById("NPOTOddButton").
+              addEventListener("click", onNpotOddButton, false);
           }
 
           function onWindowChanged(evt) {
@@ -44,6 +44,37 @@
             adjuster.drawImage();
           }
 
+          function onGradientButton(evt) {
+            var data = new Uint16Array(4096);
+            for (i = 0; i < 4096; i++) {
+              data[i] = i;
+            }
+            adjuster.setImageData(data, 64, 64);
+            adjuster.drawImage();
+          }
+
+          function onNpotEvenButton(evt) {
+            onNpot(14);
+          }
+
+          function onNpotOddButton(evt) {
+            onNpot(13);
+          }
+
+          function onNpot(size) {
+            var data = new Uint16Array(size * size);
+            for (i = 0; i < size * size; i++) {
+              data[i] = 0;
+            }
+            data[0] = 2048;
+            data[size - 1] = 2048;
+            data[size * (size-1)] = 2048;
+            data[size * size - 1] = 2048;
+
+            adjuster.setImageData(data, size, size);
+            adjuster.drawImage();
+          }
+
         </script>
     </head>
 
@@ -54,6 +85,9 @@
       </br>
       <input id="windowControl" type="range" min="3" max="256" value="256" >Window</input></br>
       <input id="levelControl" type="range" min="0" max="255" value="128" >Level</input></br>
+      <input id="gradientButton" type="button" value="Gradient"></input></br>
+      <input id="NPOTEvenButton" type="button" value="NPOT Even"></input></br>
+      <input id="NPOTOddButton" type="button" value="NPOT Odd"></input></br>
     </body>
 
 </html>

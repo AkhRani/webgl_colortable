@@ -65,6 +65,8 @@ function ColorAdjuster() {
       gl = canvas.getContext("webgl") ||
            canvas.getContext("experimental-webgl");
       gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
+      gl.pixelStorei(gl.PACK_ALIGNMENT, 2);
     }
     catch(e) {}
 
@@ -118,6 +120,8 @@ function ColorAdjuster() {
     gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
 
     // This is the color lookup table, which translates the 12-bit image
@@ -135,6 +139,8 @@ function ColorAdjuster() {
 
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
 
 
