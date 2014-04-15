@@ -1,40 +1,4 @@
 function ColorAdjuster() {
-  var g_vertexShader = "\
-    attribute vec3 aVertexPosition;\n\
-    attribute vec2 aTextureCoord;\n\
-  \
-    varying highp vec2 vTextureCoord;\n\
-  \
-    void main(void) {\n\
-      gl_Position = vec4(aVertexPosition, 1.0);\n\
-      vTextureCoord = aTextureCoord;\n\
-    }\n\
-    ";
-
-
-  var g_fragmentShader = "\
-      precision highp float;\n\
-      varying highp vec2 vTextureCoord;\n\
-      uniform sampler2D uDataSampler;\n\
-      uniform sampler2D uColorSampler;\n\
-  \
-      void main(void) {\n\
-        vec4 data = texture2D(uDataSampler, vTextureCoord);\n\
-        /* Use the 4-bit color components of the data sample to generate */\n\
-        /* a texture coordinate in our color lookup table.  This would be */\n\
-        /* simpler if webgl supported 3D textures */\n\
-          \
-        /* I don't like the .01 in the 273.01 below.  There's something */\n\
-        /* I'm missing about the component value scaling, and without the */\n\
-        /* .01 a fully saturated value overruns the color lookup texture */\n\
-        gl_FragColor = texture2D(uColorSampler, \n\
-            vec2((data.w +                \n\
-                 (data.z * 16.0) +      \n\
-                 (data.y * 256.0)) / 273.01, .5));\n\
-      }\n\
-  ";
-
-
   this.gl = null;
   this.vertexPositionAttribute = null;
   this.textureCoordAttribute = null;
@@ -46,11 +10,17 @@ function ColorAdjuster() {
   this.textureArray = null;
   this.dataTexture = null;
   this.windowTexture = null;
+  this.lut = null;
 
+  /*************************************************************/
+  /* Public interface.  Client code should use these functions */
+  /*************************************************************/
+
+  /* Call this function once after creating the ColorAdjuster object,
+   * passing in a canvas element to display the image on.
+   * This function must be called before the other functions. */
   this.init = function(canvas) {
-
     this.gl = initWebGL(canvas);
-
     if (this.gl) {
       this.initShaders();
       this.initBuffers();
@@ -58,6 +28,93 @@ function ColorAdjuster() {
     }
   }
 
+  this.setImageData = function(data, width, height) {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
+    gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA,
+        gl.UNSIGNED_SHORT_4_4_4_4, data);
+  }
+
+  /* This is the most general-purpose way to set the mapping from
+   * 12-bit grayscale to 8-bit color.  The data argument must be a Uint8Array,
+   * with length equal to 4096*3.  Element 0 is the output red component
+   * for 12-bit value 0x000.  Element 1 is the green component, etc. */
+  this.setColorTable = function(data) {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
+    gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 4096, 1, 0, gl.RGB,
+        gl.UNSIGNED_BYTE, data);
+  }
+
+  /* This is a convenience function to simplify calling setColorTable */
+  this.setWindow = function(width, start) {
+    var i;
+    for (i = 0; i < start && i < 4096; i++) {
+      this.lut[i*3+0] = 0;
+      this.lut[i*3+1] = 0;
+      this.lut[i*3+2] = 0;
+    }
+    for (; i < start+width && i < 4096; i++) {
+      var scaledValue = (i - start) * 255.0 / width;
+      this.lut[i*3+0] = scaledValue;
+      this.lut[i*3+1] = scaledValue;
+      this.lut[i*3+2] = scaledValue;
+    }
+    for (; i < 4096; i++) {
+      this.lut[i*3+0] = 255;
+      this.lut[i*3+1] = 255;
+      this.lut[i*3+2] = 255;
+    }
+    this.setColorTable(this.lut);
+  }
+
+  /* This is a convenience function to simplify calling setColorTable */
+  this.setWindowWidthAndCenter = function(width, center) {
+    this.setWindow(width, center - width/2);
+  }
+
+  /* Call this to refresh the image after setting the image data
+   * or the color table */
+  this.drawImage = function() {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    // Copy screen coordinates to GL
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.squareArray, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(this.vertexPositionAttribute,
+        3, gl.FLOAT, false, 0, 0);
+
+    // Copy texture coordinates to GL
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.textureCoordBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.textureArray, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(this.textureCoordAttribute,
+        2, gl.FLOAT, false, 0, 0);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+    gl.uniform1i(this.dataSamplerUniform, 0);
+
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
+    gl.uniform1i(this.windowSamplerUniform, 1);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  /**********************************************/
+  /* Private functions, mostly initialization.
+   * Client code should not need to call these. */
+  /**********************************************/
   function initWebGL(canvas) {
     var gl = null;
     try {
@@ -111,6 +168,7 @@ function ColorAdjuster() {
     this.textureArray = new Float32Array(textureCoords);
   }
 
+
   this.initTextures = function() {
     var gl = this.gl;
     if (!gl)
@@ -123,15 +181,14 @@ function ColorAdjuster() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-
     // This is the color lookup table, which translates the 12-bit image
-    // colors to screen colors.  
-    var data = new Uint8Array(4096 * 3);
+    // colors to screen colors.
+    this.lut = new Uint8Array(4096 * 3);
     for (i = 0; i < 4096; i++) {
       var scaledValue = i/16;
-      data[i*3+0] = scaledValue;
-      data[i*3+1] = scaledValue;
-      data[i*3+2] = scaledValue;
+      this.lut[i*3+0] = scaledValue;
+      this.lut[i*3+1] = scaledValue;
+      this.lut[i*3+2] = scaledValue;
     }
 
     this.windowTexture = gl.createTexture();
@@ -199,79 +256,39 @@ function ColorAdjuster() {
     this.windowSamplerUniform = gl.getUniformLocation(program, "uColorSampler");
   }
 
-  this.drawImage = function() {
-    var gl = this.gl;
-    if (!gl)
-      return;
+  /* Shader Programs */
+  var g_vertexShader = "\
+    attribute vec3 aVertexPosition;\n\
+    attribute vec2 aTextureCoord;\n\
+  \
+    varying highp vec2 vTextureCoord;\n\
+  \
+    void main(void) {\n\
+      gl_Position = vec4(aVertexPosition, 1.0);\n\
+      vTextureCoord = aTextureCoord;\n\
+    }\n\
+    ";
 
-    gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // Copy screen coordinates to GL
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, this.squareArray, gl.STATIC_DRAW);
-    gl.vertexAttribPointer(this.vertexPositionAttribute,
-        3, gl.FLOAT, false, 0, 0);
-
-    // Copy texture coordinates to GL
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.textureCoordBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, this.textureArray, gl.STATIC_DRAW);
-    gl.vertexAttribPointer(this.textureCoordAttribute,
-        2, gl.FLOAT, false, 0, 0);
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
-    gl.uniform1i(this.dataSamplerUniform, 0);
-
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
-    gl.uniform1i(this.windowSamplerUniform, 1);
-
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  }
-
-  this.setImageData = function(data, width, height) {
-    var gl = this.gl;
-    if (!gl)
-      return;
-
-    gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA,
-        gl.UNSIGNED_SHORT_4_4_4_4, data);
-  }
-
-  this.setWindow = function(width, start) {
-    var data = new Uint8Array(4096 * 3);
-    var i;
-    for (i = 0; i < start && i < 4096; i++) {
-      data[i*3+0] = 0;
-      data[i*3+1] = 0;
-      data[i*3+2] = 0;
-    }
-    for (; i < start+width && i < 4096; i++) {
-      var scaledValue = (i - start) * 255.0 / width;
-      data[i*3+0] = scaledValue;
-      data[i*3+1] = scaledValue;
-      data[i*3+2] = scaledValue;
-    }
-    for (; i < 4096; i++) {
-      data[i*3+0] = 255;
-      data[i*3+1] = 255;
-      data[i*3+2] = 255;
-    }
-    this.setColorTable(data);
-  }
-
-  this.setWindowWidthAndCenter = function(width, center) {
-    this.setWindow(width, center - width/2);
-  }
-
-  this.setColorTable = function(data) {
-    var gl = this.gl;
-    if (!gl)
-      return;
-
-    gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 4096, 1, 0, gl.RGB,
-        gl.UNSIGNED_BYTE, data);
-  }
+  var g_fragmentShader = "\
+      precision highp float;\n\
+      varying highp vec2 vTextureCoord;\n\
+      uniform sampler2D uDataSampler;\n\
+      uniform sampler2D uColorSampler;\n\
+  \
+      void main(void) {\n\
+        vec4 data = texture2D(uDataSampler, vTextureCoord);\n\
+        /* Use the 4-bit color components of the data sample to generate */\n\
+        /* a texture coordinate in our color lookup table.  This would be */\n\
+        /* simpler if webgl supported 3D textures */\n\
+          \
+        /* I don't like the .01 in the 273.01 below.  There's something */\n\
+        /* I'm missing about the component value scaling, and without the */\n\
+        /* .01 a fully saturated value overruns the color lookup texture */\n\
+        gl_FragColor = texture2D(uColorSampler, \n\
+            vec2((data.w +                \n\
+                 (data.z * 16.0) +      \n\
+                 (data.y * 256.0)) / 273.01, .5));\n\
+      }\n\
+  ";
 }
