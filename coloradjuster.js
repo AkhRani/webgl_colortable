@@ -1,13 +1,16 @@
 function ColorAdjuster() {
   this.gl = null;
-  this.vertexPositionAttribute = null;
-  this.textureCoordAttribute = null;
-  this.dataSamplerUniform = null;
-  this.windowSamplerUniform = null;
+  // GL Attribute IDs
+  this.vertexPosition = null;
+  this.textureCoord = null;
+  // GL Uniform IDs
+  this.dataSampler = null;
+  this.windowSampler = null;
   this.squareVerticesBuffer = null;
   this.textureCoordBuffer = null;
   this.squareArray = null;
-  this.textureArray = null;
+  this.normalTextureCoords = null;
+  this.invertedTextureCoords = null;
   this.dataTexture = null;
   this.windowTexture = null;
   this.lut = null;
@@ -25,7 +28,9 @@ function ColorAdjuster() {
       this.initShaders();
       this.initBuffers();
       this.initTextures();
+      return true;
     }
+    return false;
   }
 
   this.setImageData = function(data, width, height) {
@@ -54,6 +59,10 @@ function ColorAdjuster() {
 
   /* This is a convenience function to simplify calling setColorTable */
   this.setWindow = function(width, start) {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
     var i;
     for (i = 0; i < start && i < 4096; i++) {
       this.lut[i*3+0] = 0;
@@ -81,7 +90,7 @@ function ColorAdjuster() {
 
   /* Call this to refresh the image after setting the image data
    * or the color table */
-  this.drawImage = function() {
+  this.drawImage = function(invert) {
     var gl = this.gl;
     if (!gl)
       return;
@@ -91,22 +100,25 @@ function ColorAdjuster() {
     // Copy screen coordinates to GL
     gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, this.squareArray, gl.STATIC_DRAW);
-    gl.vertexAttribPointer(this.vertexPositionAttribute,
-        3, gl.FLOAT, false, 0, 0);
+    gl.vertexAttribPointer(this.vertexPosition, 3, gl.FLOAT, false, 0, 0);
 
     // Copy texture coordinates to GL
     gl.bindBuffer(gl.ARRAY_BUFFER, this.textureCoordBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, this.textureArray, gl.STATIC_DRAW);
-    gl.vertexAttribPointer(this.textureCoordAttribute,
-        2, gl.FLOAT, false, 0, 0);
+    if (invert) {
+      gl.bufferData(gl.ARRAY_BUFFER, this.invertTextureCoords, gl.STATIC_DRAW);
+    }
+    else {
+      gl.bufferData(gl.ARRAY_BUFFER, this.normalTextureCoords, gl.STATIC_DRAW);
+    }
+    gl.vertexAttribPointer(this.textureCoord, 2, gl.FLOAT, false, 0, 0);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
-    gl.uniform1i(this.dataSamplerUniform, 0);
+    gl.uniform1i(this.dataSampler, 0);
 
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
-    gl.uniform1i(this.windowSamplerUniform, 1);
+    gl.uniform1i(this.windowSampler, 1);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
@@ -165,7 +177,15 @@ function ColorAdjuster() {
       1.0, 0.0,       // bottom right
       1.0, 1.0      // top right
     ];
-    this.textureArray = new Float32Array(textureCoords);
+    this.normalTextureCoords = new Float32Array(textureCoords);
+
+    var textureCoords = [
+      0.0, 1.0,         // bottom left
+      0.0, 0.0,       // top left
+      1.0, 1.0,       // bottom right
+      1.0, 0.0      // top right
+    ];
+    this.invertTextureCoords = new Float32Array(textureCoords);
   }
 
 
@@ -227,15 +247,11 @@ function ColorAdjuster() {
     if (!gl)
       return;
 
-    var fragmentShader =
-        compileShader(gl, g_fragmentShader, gl.FRAGMENT_SHADER);
-
-    var vertexShader =
-        compileShader(gl, g_vertexShader, gl.VERTEX_SHADER);
-
+    var frag = compileShader(gl, g_fragmentShader, gl.FRAGMENT_SHADER);
+    var vert = compileShader(gl, g_vertexShader, gl.VERTEX_SHADER);
     var program = gl.createProgram();
-    gl.attachShader(program, fragmentShader);
-    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, frag);
+    gl.attachShader(program, vert);
     gl.linkProgram(program);
 
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
@@ -245,18 +261,19 @@ function ColorAdjuster() {
     // Now that we've built the shader program, we can find the IDs of the
     // shader program variables.
     gl.useProgram(program);
-    this.vertexPositionAttribute =
-         gl.getAttribLocation(program, "aVertexPosition");
-    gl.enableVertexAttribArray(this.vertexPositionAttribute);
+    this.vertexPosition = gl.getAttribLocation(program, "aVertexPosition");
+    gl.enableVertexAttribArray(this.vertexPosition);
 
-    this.textureCoordAttribute = gl.getAttribLocation(program, "aTextureCoord");
-    gl.enableVertexAttribArray(this.textureCoordAttribute);
+    this.textureCoord = gl.getAttribLocation(program, "aTextureCoord");
+    gl.enableVertexAttribArray(this.textureCoord);
 
-    this.dataSamplerUniform = gl.getUniformLocation(program, "uDataSampler");
-    this.windowSamplerUniform = gl.getUniformLocation(program, "uColorSampler");
+    this.dataSampler = gl.getUniformLocation(program, "uDataSampler");
+    this.windowSampler = gl.getUniformLocation(program, "uColorSampler");
   }
 
+  /*******************/
   /* Shader Programs */
+  /*******************/
   var g_vertexShader = "\
     attribute vec3 aVertexPosition;\n\
     attribute vec2 aTextureCoord;\n\

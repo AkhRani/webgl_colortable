@@ -11,7 +11,7 @@
             var canvas = document.getElementById("glcanvas");
             adjuster.init(canvas);
 
-            adjuster.setWindow(4096, 0);
+            readWindowControls();
             onGradientButton(null);
 
             document.getElementById("windowControl").
@@ -24,9 +24,11 @@
               addEventListener("click", onNpotEvenButton, false);
             document.getElementById("NPOTOddButton").
               addEventListener("click", onNpotOddButton, false);
+            document.getElementById("invertCheckbox").
+              addEventListener("change", onWindowChanged, false);
           }
 
-          function onWindowChanged(evt) {
+          function readWindowControls() {
             var windowControl = document.getElementById("windowControl");
             var levelControl =  document.getElementById("levelControl");
 
@@ -41,16 +43,25 @@
             var center = relativeCenter * centerRange + lowestCenter;
 
             adjuster.setWindowWidthAndCenter(width, center);
-            adjuster.drawImage();
+          }
+
+          function redrawImage() {
+            var invertControl = document.getElementById("invertCheckbox");
+            adjuster.drawImage(invertControl.checked);
+          }
+
+          function onWindowChanged(evt) {
+            readWindowControls();
+            redrawImage();
           }
 
           function onGradientButton(evt) {
-            var data = new Uint16Array(4096);
-            for (i = 0; i < 4096; i++) {
-              data[i] = i;
+            var data = new Uint16Array(256*256);
+            for (i = 0; i < 256*256; i++) {
+              data[i] = i & 0xFFF;
             }
-            adjuster.setImageData(data, 64, 64);
-            adjuster.drawImage();
+            adjuster.setImageData(data, 256, 256);
+            redrawImage();
           }
 
           function onNpotEvenButton(evt) {
@@ -88,6 +99,7 @@
       <input id="gradientButton" type="button" value="Gradient"></input></br>
       <input id="NPOTEvenButton" type="button" value="NPOT Even"></input></br>
       <input id="NPOTOddButton" type="button" value="NPOT Odd"></input></br>
+      <input id="invertCheckbox" type="checkbox" value="inverted">Invert</input></br>
     </body>
 
 </html>
