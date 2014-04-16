@@ -1,6 +1,5 @@
 function ColorAdjuster() {
   this.gl = null;
-  this.canvas = null;
   // GL Attribute IDs
   this.vertexPosition = null;
   this.textureCoord = null;
@@ -26,7 +25,6 @@ function ColorAdjuster() {
   this.init = function(canvas) {
     this.gl = initWebGL(canvas);
     if (this.gl) {
-      this.canvas = canvas;
       this.initShaders();
       this.initBuffers();
       this.initTextures();
@@ -98,7 +96,7 @@ function ColorAdjuster() {
       return;
 
     // In case the canvas was resized
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     // Copy screen coordinates to GL
