@@ -1,5 +1,6 @@
 function ColorAdjuster() {
   this.gl = null;
+  this.canvas = null;
   // GL Attribute IDs
   this.vertexPosition = null;
   this.textureCoord = null;
@@ -25,6 +26,7 @@ function ColorAdjuster() {
   this.init = function(canvas) {
     this.gl = initWebGL(canvas);
     if (this.gl) {
+      this.canvas = canvas;
       this.initShaders();
       this.initBuffers();
       this.initTextures();
@@ -95,6 +97,8 @@ function ColorAdjuster() {
     if (!gl)
       return;
 
+    // In case the canvas was resized
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     // Copy screen coordinates to GL
@@ -105,7 +109,7 @@ function ColorAdjuster() {
     // Copy texture coordinates to GL
     gl.bindBuffer(gl.ARRAY_BUFFER, this.textureCoordBuffer);
     if (invert) {
-      gl.bufferData(gl.ARRAY_BUFFER, this.invertTextureCoords, gl.STATIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, this.invertedTextureCoords, gl.STATIC_DRAW);
     }
     else {
       gl.bufferData(gl.ARRAY_BUFFER, this.normalTextureCoords, gl.STATIC_DRAW);
@@ -185,7 +189,7 @@ function ColorAdjuster() {
       1.0, 1.0,       // bottom right
       1.0, 0.0      // top right
     ];
-    this.invertTextureCoords = new Float32Array(textureCoords);
+    this.invertedTextureCoords = new Float32Array(textureCoords);
   }
 
 
