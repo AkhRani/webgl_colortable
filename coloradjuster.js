@@ -1,11 +1,15 @@
 function ColorAdjuster() {
   this.gl = null;
+
   // GL Attribute IDs
   this.vertexPosition = null;
   this.textureCoord = null;
+
   // GL Uniform IDs
   this.dataSampler = null;
   this.windowSampler = null;
+
+  // Buffers and arrays
   this.squareVerticesBuffer = null;
   this.textureCoordBuffer = null;
   this.squareArray = null;
@@ -65,21 +69,25 @@ function ColorAdjuster() {
 
     var i;
     for (i = 0; i < start && i < 4096; i++) {
-      this.lut[i*3+0] = 0;
-      this.lut[i*3+1] = 0;
-      this.lut[i*3+2] = 0;
+      this.lut[i*3 + 0] = 0;
+      this.lut[i*3 + 1] = 0;
+      this.lut[i*3 + 2] = 0;
     }
-    for (; i < start+width && i < 4096; i++) {
+    for (; i < start + width && i < 4096; i++) {
       var scaledValue = (i - start) * 255.0 / width;
-      this.lut[i*3+0] = scaledValue;
-      this.lut[i*3+1] = scaledValue;
-      this.lut[i*3+2] = scaledValue;
+      this.lut[i*3 + 0] = scaledValue;
+      this.lut[i*3 + 1] = scaledValue;
+      this.lut[i*3 + 2] = scaledValue;
     }
     for (; i < 4096; i++) {
-      this.lut[i*3+0] = 255;
-      this.lut[i*3+1] = 255;
-      this.lut[i*3+2] = 255;
+      this.lut[i*3 + 0] = 255;
+      this.lut[i*3 + 1] = 255;
+      this.lut[i*3 + 2] = 255;
     }
+    // un-comment this for range testing
+    // this.lut[0] = 255;
+    // this.lut[4095*3 + 0] = 0;
+    // this.lut[4095*3 + 2] = 0;
     this.setColorTable(this.lut);
   }
 
@@ -166,7 +174,6 @@ function ColorAdjuster() {
       1.0, 1.0, 0.0         // top right
     ]
     this.squareArray = new Float32Array(square);
-
 
     // Create GL buffer to hold vertex texture coordinates
     this.textureCoordBuffer = gl.createBuffer();
@@ -288,6 +295,14 @@ function ColorAdjuster() {
     }\n\
     ";
 
+  // Note on shader math.
+  // We Use the 4-bit color components of the data sample to generate
+  // a texture coordinate in our color lookup table.  This would be
+  // simpler if webgl supported 3D textures.
+  // Each RGB component is linearly mapped from [0,15] to [0, 1.0]
+  // To restore the original 0-4095 value, w*15 + x*15*16 + y*15*256.
+  // Then divide by 4096 and add .5 / 4096 to generate lut sample coord.
+  // Factoring out the multiply-by 15 gives a division by 273.07
 
   var g_fragmentShader = "\
       precision highp float;\n\
@@ -297,17 +312,8 @@ function ColorAdjuster() {
   \
       void main(void) {\n\
         vec4 data = texture2D(uDataSampler, vTextureCoord);\n\
-        /* Use the 4-bit color components of the data sample to generate */\n\
-        /* a texture coordinate in our color lookup table.  This would be */\n\
-        /* simpler if webgl supported 3D textures */\n\
-          \
-        /* I don't like the .01 in the 273.01 below.  There's something */\n\
-        /* I'm missing about the component value scaling, and without the */\n\
-        /* .01 a fully saturated value overruns the color lookup texture */\n\
-        gl_FragColor = texture2D(uColorSampler, \n\
-            vec2((data.w +                \n\
-                 (data.z * 16.0) +      \n\
-                 (data.y * 256.0)) / 273.01, .5));\n\
+        float value = (data.w + (data.z * 16.0) + (data.y * 256.0)) / 273.07 + .5/4096.0;\n\
+        gl_FragColor = texture2D(uColorSampler, vec2(value, .05));\n\
       }\n\
   ";
 }

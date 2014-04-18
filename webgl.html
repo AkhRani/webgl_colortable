@@ -56,11 +56,11 @@
           }
 
           function onGradientButton(evt) {
-            var data = new Uint16Array(256*256);
-            for (i = 0; i < 256*256; i++) {
+            var data = new Uint16Array(64*64);
+            for (i = 0; i < 64*64; i++) {
               data[i] = i & 0xFFF;
             }
-            adjuster.setImageData(data, 256, 256);
+            adjuster.setImageData(data, 64, 64);
             redrawImage();
           }
 
