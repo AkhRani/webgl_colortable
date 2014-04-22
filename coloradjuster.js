@@ -16,7 +16,7 @@ function ColorAdjuster() {
   this.normalTextureCoords = null;
   this.invertedTextureCoords = null;
   this.dataTexture = null;
-  this.windowTexture = null;
+  this.lutTexture = null;
   this.lut = null;
 
   /*************************************************************/
@@ -42,22 +42,25 @@ function ColorAdjuster() {
     if (!gl)
       return;
 
+    // Client can pass 8-bit or 16-bit buffer
+    var uint8View = new Uint8Array(data.buffer);
+
     gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA,
-        gl.UNSIGNED_SHORT_4_4_4_4, data);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE_ALPHA, width, height, 0,
+        gl.LUMINANCE_ALPHA, gl.UNSIGNED_BYTE, uint8View);
   }
 
   /* This is the most general-purpose way to set the mapping from
-   * 12-bit grayscale to 8-bit color.  The data argument must be a Uint8Array,
-   * with length equal to 4096*3.  Element 0 is the output red component
-   * for 12-bit value 0x000.  Element 1 is the green component, etc. */
+   * 16-bit grayscale to 8-bit color.  The data argument must be a Uint8Array,
+   * with length equal to 65536*3.  Element 0 is the output red component
+   * for 16-bit value 0x0000.  Element 1 is the green component, etc. */
   this.setColorTable = function(data) {
     var gl = this.gl;
     if (!gl)
       return;
 
-    gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 4096, 1, 0, gl.RGB,
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 256, 256, 0, gl.RGB,
         gl.UNSIGNED_BYTE, data);
   }
 
@@ -83,6 +86,12 @@ function ColorAdjuster() {
       this.lut[i*3 + 0] = 255;
       this.lut[i*3 + 1] = 255;
       this.lut[i*3 + 2] = 255;
+    }
+    // For range testing
+    for (; i < 65536; i++) {
+      this.lut[i*3+0] = 255;
+      this.lut[i*3+1] = 0;
+      this.lut[i*3+2] = 0;
     }
     // un-comment this for range testing
     // this.lut[0] = 255;
@@ -127,7 +136,7 @@ function ColorAdjuster() {
     gl.uniform1i(this.dataSampler, 0);
 
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
     gl.uniform1i(this.windowSampler, 1);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -210,18 +219,11 @@ function ColorAdjuster() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    // This is the color lookup table, which translates the 12-bit image
+    // This is the color lookup table, which translates the 16-bit image
     // colors to screen colors.
-    this.lut = new Uint8Array(4096 * 3);
-    for (i = 0; i < 4096; i++) {
-      var scaledValue = i/16;
-      this.lut[i*3+0] = scaledValue;
-      this.lut[i*3+1] = scaledValue;
-      this.lut[i*3+2] = scaledValue;
-    }
-
-    this.windowTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, this.windowTexture);
+    this.lut = new Uint8Array(65536 * 3);
+    this.lutTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
 
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -284,36 +286,27 @@ function ColorAdjuster() {
   /* Shader Programs */
   /*******************/
   var g_vertexShader = "\
-    attribute vec3 aVertexPosition;\n\
-    attribute vec2 aTextureCoord;\n\
+    #version 100\n\
+    attribute vec3 aVertexPosition;\
+    attribute vec2 aTextureCoord;\
+    varying highp vec2 vTextureCoord;\
   \
-    varying highp vec2 vTextureCoord;\n\
-  \
-    void main(void) {\n\
-      gl_Position = vec4(aVertexPosition, 1.0);\n\
-      vTextureCoord = aTextureCoord;\n\
-    }\n\
-    ";
-
-  // Note on shader math.
-  // We Use the 4-bit color components of the data sample to generate
-  // a texture coordinate in our color lookup table.  This would be
-  // simpler if webgl supported 3D textures.
-  // Each RGB component is linearly mapped from [0,15] to [0, 1.0]
-  // To restore the original 0-4095 value, w*15 + x*15*16 + y*15*256.
-  // Then divide by 4096 and add .5 / 4096 to generate lut sample coord.
-  // Factoring out the multiply-by 15 gives a division by 273.07
+    void main(void) {\
+      gl_Position = vec4(aVertexPosition, 1.0);\
+      vTextureCoord = aTextureCoord;\
+    }\
+  ";
 
   var g_fragmentShader = "\
-      precision highp float;\n\
-      varying highp vec2 vTextureCoord;\n\
-      uniform sampler2D uDataSampler;\n\
-      uniform sampler2D uColorSampler;\n\
+    #version 100\n\
+    precision highp float;\
+    varying highp vec2 vTextureCoord;\
+    uniform sampler2D uDataSampler;\
+    uniform sampler2D uColorSampler;\
   \
-      void main(void) {\n\
-        vec4 data = texture2D(uDataSampler, vTextureCoord);\n\
-        float value = (data.w + (data.z * 16.0) + (data.y * 256.0)) / 273.07 + .5/4096.0;\n\
-        gl_FragColor = texture2D(uColorSampler, vec2(value, .05));\n\
-      }\n\
+    void main(void) {\
+      vec4 data = texture2D(uDataSampler, vTextureCoord);\
+      gl_FragColor = texture2D(uColorSampler, data.ra );\
+    }\
   ";
 }
