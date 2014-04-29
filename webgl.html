@@ -6,6 +6,7 @@
         <script src="coloradjuster.js"></script>
         <script>
           adjuster = new ColorAdjuster();
+          var testPattern = false;
 
           function start() {
             var canvas = document.getElementById("glcanvas");
@@ -22,6 +23,8 @@
               addEventListener("click", onGradientButton, false);
             document.getElementById("NPOTEvenButton").
               addEventListener("click", onNpotEvenButton, false);
+            document.getElementById("TestPatternButton").
+              addEventListener("click", onTestPatternButton, false);
             document.getElementById("NPOTOddButton").
               addEventListener("click", onNpotOddButton, false);
             document.getElementById("invertCheckbox").
@@ -42,7 +45,7 @@
             var relativeCenter = levelControl.value / 256.0;
             var center = relativeCenter * centerRange + lowestCenter;
 
-            adjuster.setWindowWidthAndCenter(width, center);
+            adjuster.setWindow(width, center, 12, [128, 128, 0]);
           }
 
           function redrawImage() {
@@ -52,15 +55,20 @@
 
           function onWindowChanged(evt) {
             readWindowControls();
-            redrawImage();
+            if (testPattern) {
+              onGradientButton(null);
+            }
+            else {
+              redrawImage();
+            }
           }
 
           function onGradientButton(evt) {
-            var data = new Uint16Array(64*64);
-            for (i = 0; i < 64*64; i++) {
-              data[i] = i * 2;
+            var data = new Uint16Array(128*64);
+            for (i = 0; i < 128*64; i++) {
+              data[i] = i;
             }
-            adjuster.setImageData(data, 64, 64);
+            adjuster.setImageData(data, 128, 64);
             redrawImage();
           }
 
@@ -86,11 +94,34 @@
             adjuster.drawImage();
           }
 
+          function onTestPatternButton() {
+            var ct = new Uint8Array(3 * 65536);
+            for (i = 0; i < 65536; i++) {
+              if ((i & 1) != 0) {
+                ct[i*3] = 255;
+                ct[i*3 + 1] = 0;
+              }
+              else {
+                ct[i*3] = 0;
+                ct[i*3 + 1] = 255;
+              }
+              ct[i*3 + 2] = 0;
+            }
+            adjuster.setColorTable(ct);
+            var data = new Uint16Array(256*256);
+            for (i = 0; i < 256*256; i++) {
+              data[i] = i;
+            }
+            adjuster.setImageData(data, 256, 256);
+            testPattern = true;
+            redrawImage();
+          }
+
         </script>
     </head>
 
     <body onload="start()">
-      <canvas id="glcanvas" width="256" height="256">
+      <canvas id="glcanvas" width="1024" height="512">
       Missing canvas support
       </canvas>
       </br>
@@ -99,6 +130,7 @@
       <input id="gradientButton" type="button" value="Gradient"></input></br>
       <input id="NPOTEvenButton" type="button" value="NPOT Even"></input></br>
       <input id="NPOTOddButton" type="button" value="NPOT Odd"></input></br>
+      <input id="TestPatternButton" type="button" value="Test Pattern"></input></br>
       <input id="invertCheckbox" type="checkbox" value="inverted">Invert</input></br>
     </body>
 

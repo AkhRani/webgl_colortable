@@ -65,44 +65,36 @@ function ColorAdjuster() {
   }
 
   /* This is a convenience function to simplify calling setColorTable */
-  this.setWindow = function(width, start) {
+  this.setWindow = function(width, center, validBits, invalidColor) {
     var gl = this.gl;
-    if (!gl)
+    if (!gl || validBits < 1 || validBits > 16)
       return;
 
+    var start = center - width / 2;
+    var validColors = 1 << validBits;
     var i;
-    for (i = 0; i < start && i < 4096; i++) {
+    for (i = 0; i < start && i < validColors; i++) {
       this.lut[i*3 + 0] = 0;
       this.lut[i*3 + 1] = 0;
       this.lut[i*3 + 2] = 0;
     }
-    for (; i < start + width && i < 4096; i++) {
+    for (; i < start + width && i < validColors; i++) {
       var scaledValue = (i - start) * 255.0 / width;
       this.lut[i*3 + 0] = scaledValue;
       this.lut[i*3 + 1] = scaledValue;
       this.lut[i*3 + 2] = scaledValue;
     }
-    for (; i < 4096; i++) {
+    for (; i < validColors; i++) {
       this.lut[i*3 + 0] = 255;
       this.lut[i*3 + 1] = 255;
       this.lut[i*3 + 2] = 255;
     }
-    // For range testing
     for (; i < 65536; i++) {
-      this.lut[i*3+0] = 255;
-      this.lut[i*3+1] = 0;
-      this.lut[i*3+2] = 0;
+      this.lut[i*3+0] = invalidColor[0];
+      this.lut[i*3+1] = invalidColor[1];
+      this.lut[i*3+2] = invalidColor[2];
     }
-    // un-comment this for range testing
-    // this.lut[0] = 255;
-    // this.lut[4095*3 + 0] = 0;
-    // this.lut[4095*3 + 2] = 0;
     this.setColorTable(this.lut);
-  }
-
-  /* This is a convenience function to simplify calling setColorTable */
-  this.setWindowWidthAndCenter = function(width, center) {
-    this.setWindow(width, center - width/2);
   }
 
   /* Call this to refresh the image after setting the image data
