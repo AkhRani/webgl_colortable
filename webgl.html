@@ -25,6 +25,8 @@
               addEventListener("click", onNpotEvenButton, false);
             document.getElementById("TestPatternButton").
               addEventListener("click", onTestPatternButton, false);
+            document.getElementById("ImageButton").
+              addEventListener("click", onImageButton, false);
             document.getElementById("NPOTOddButton").
               addEventListener("click", onNpotOddButton, false);
             document.getElementById("invertCheckbox").
@@ -117,6 +119,15 @@
             redrawImage();
           }
 
+          function onImageButton() {
+            myImage = new Image();
+            myImage.onload = function () {
+              adjuster.setImage(myImage);
+              redrawImage();
+            }
+            myImage.src = "image_1.jpg";
+          }
+
         </script>
     </head>
 
@@ -127,10 +138,11 @@
       </br>
       <input id="windowControl" type="range" min="3" max="256" value="256" >Window</input></br>
       <input id="levelControl" type="range" min="0" max="255" value="128" >Level</input></br>
+      <input id="TestPatternButton" style="display:none" type="button" value="Test Pattern"></input></br>
       <input id="gradientButton" type="button" value="Gradient"></input></br>
       <input id="NPOTEvenButton" type="button" value="NPOT Even"></input></br>
       <input id="NPOTOddButton" type="button" value="NPOT Odd"></input></br>
-      <input id="TestPatternButton" type="button" value="Test Pattern"></input></br>
+      <input id="ImageButton" type="button" value="Image"></input></br>
       <input id="invertCheckbox" type="checkbox" value="inverted">Invert</input></br>
     </body>
 

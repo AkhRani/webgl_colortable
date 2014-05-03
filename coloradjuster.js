@@ -1,5 +1,8 @@
 function ColorAdjuster() {
+  // Miscellaneous state
   this.gl = null;
+  this.externalColorTable = false;
+  this.colorBits = 16;
 
   // GL Attribute IDs
   this.vertexPosition = null;
@@ -37,6 +40,8 @@ function ColorAdjuster() {
     return false;
   }
 
+  // data is 16-bit grayscale data, in a Uint16Array 
+  // or a Uint8Array
   this.setImageData = function(data, width, height) {
     var gl = this.gl;
     if (!gl)
@@ -48,20 +53,29 @@ function ColorAdjuster() {
     gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE_ALPHA, width, height, 0,
         gl.LUMINANCE_ALPHA, gl.UNSIGNED_BYTE, uint8View);
+    this.checkLut(16);
   }
 
-  /* This is the most general-purpose way to set the mapping from
-   * 16-bit grayscale to 8-bit color.  The data argument must be a Uint8Array,
-   * with length equal to 65536*3.  Element 0 is the output red component
-   * for 16-bit value 0x0000.  Element 1 is the green component, etc. */
-  this.setColorTable = function(data) {
+  // image is an HTMLImageElement
+  this.setImage = function(image) {
     var gl = this.gl;
     if (!gl)
       return;
 
-    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 256, 256, 0, gl.RGB,
-        gl.UNSIGNED_BYTE, data);
+    gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
+    this.checkLut(8);
+  }
+  
+  /* This is the most general-purpose way to set the mapping from
+   * 16-bit grayscale to 8-bit color.  The data argument must be a Uint8Array,
+   * with length equal to 65536*3.  Element 0 is the output red component
+   * for 16-bit value 0x0000.  Element 1 is the green component, etc.
+   * If the current data texture is an Image (jpg, png, etc) then only
+   * the first 256 values will be used. */
+  this.setColorTable = function(data) {
+    this.externalColorTable = true;
+    this.doSetColorTable(data);
   }
 
   /* This is a convenience function to simplify calling setColorTable */
@@ -94,7 +108,8 @@ function ColorAdjuster() {
       this.lut[i*3+1] = invalidColor[1];
       this.lut[i*3+2] = invalidColor[2];
     }
-    this.setColorTable(this.lut);
+    this.doSetColorTable(this.lut);
+    this.externalColorTable = false;
   }
 
   /* Call this to refresh the image after setting the image data
@@ -274,6 +289,31 @@ function ColorAdjuster() {
     this.windowSampler = gl.getUniformLocation(program, "uColorSampler");
   }
 
+  this.checkLut = function(colorBits) {
+    if (this.colorBits != colorBits && !this.externalColorTable) {
+      this.colorBits = colorBits;
+      this.doSetColorTable(this.lut);
+    }
+  }
+
+  this.doSetColorTable = function (data) {
+    var gl = this.gl;
+    if (!gl)
+      return;
+
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
+    if (this.colorBits === 16) {
+      // 16-bit grayscale
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 256, 256, 0, gl.RGB,
+          gl.UNSIGNED_BYTE, data);
+    }
+    else {
+      // 8-bit grayscale
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 256, 1, 0, gl.RGB,
+          gl.UNSIGNED_BYTE, data);
+    }
+  }
+
   /*******************/
   /* Shader Programs */
   /*******************/
@@ -298,7 +338,8 @@ function ColorAdjuster() {
   \
     void main(void) {\
       vec4 data = texture2D(uDataSampler, vTextureCoord);\
-      gl_FragColor = texture2D(uColorSampler, data.ra );\
+      gl_FragColor = texture2D(uColorSampler, vec2(data.r,data.a) );\
     }\
   ";
+
 }
