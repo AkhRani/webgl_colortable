@@ -12,13 +12,19 @@
             var canvas = document.getElementById("glcanvas");
             adjuster.init(canvas);
 
-            readWindowControls();
+            overlayImage = new Image();
+            overlayImage.onload = function () {
+              adjuster.setOverlayImage(overlayImage);
+            }
+            overlayImage.src = "overlay.png";
+
+            readWindowAndOverlayControls();
             onGradientButton(null);
 
             document.getElementById("windowControl").
-              addEventListener("input", onWindowChanged, false);
+              addEventListener("input", onSettingsChanged, false);
             document.getElementById("levelControl").
-              addEventListener("input", onWindowChanged, false);
+              addEventListener("input", onSettingsChanged, false);
             document.getElementById("gradientButton").
               addEventListener("click", onGradientButton, false);
             document.getElementById("NPOTEvenButton").
@@ -30,10 +36,14 @@
             document.getElementById("NPOTOddButton").
               addEventListener("click", onNpotOddButton, false);
             document.getElementById("invertCheckbox").
-              addEventListener("change", onWindowChanged, false);
+              addEventListener("change", onSettingsChanged, false);
+            document.getElementById("overlayCheckbox").
+              addEventListener("change", onSettingsChanged, false);
+            document.getElementById("overlaySlider").
+              addEventListener("input", onSettingsChanged, false);
           }
 
-          function readWindowControls() {
+          function readWindowAndOverlayControls() {
             var windowControl = document.getElementById("windowControl");
             var levelControl =  document.getElementById("levelControl");
 
@@ -48,6 +58,13 @@
             var center = relativeCenter * centerRange + lowestCenter;
 
             adjuster.setWindow(width, center, 12, [128, 128, 0]);
+
+            // Overlay settings
+            var overlayCheckbox = document.getElementById("overlayCheckbox");
+            adjuster.enableOverlay(overlayCheckbox.checked);
+
+            var overlaySlider = document.getElementById("overlaySlider");
+            adjuster.setOverlayOpacity(overlaySlider.value / 100.);
           }
 
           function redrawImage() {
@@ -55,8 +72,8 @@
             adjuster.drawImage(invertControl.checked);
           }
 
-          function onWindowChanged(evt) {
-            readWindowControls();
+          function onSettingsChanged(evt) {
+            readWindowAndOverlayControls();
             if (testPattern) {
               onGradientButton(null);
             }
@@ -142,8 +159,10 @@
       <input id="gradientButton" type="button" value="Gradient"><br/>
       <input id="NPOTEvenButton" type="button" value="NPOT Even"><br/>
       <input id="NPOTOddButton" type="button" value="NPOT Odd"><br/>
-      <input id="ImageButton" type="button" value="Image"><br/>
+      <input id="ImageButton" type="button" value="Image">  Note:  Set window / level to the left to show 0-255 values<br/>
       <input id="invertCheckbox" type="checkbox" value="inverted">Invert<br/>
+      <input id="overlayCheckbox" type="checkbox" value="inverted">Enable Overlay<br/>
+      <input id="overlaySlider" type="range" min="0" max="100" value="100" >Overlay Opacity<br/>
     </body>
 
 </html>
