@@ -4,7 +4,8 @@ function ColorAdjuster() {
   this.externalColorTable = false;
   this.colorBits = 16;
   this.overlayEnabled = false;
-  this.overlayOpacity = 1.;
+  this.overlayAutoAlphaEnabled = false;
+  this.overlayAlpha = 1.;
 
   // GL Attribute IDs
   this.vertexPosition = null;
@@ -15,7 +16,8 @@ function ColorAdjuster() {
   this.windowSampler = null;
   this.overlaySampler = null;
   this.uOverlayFlag = null;
-  this.uOverlayOpacity = null;
+  this.uOverlayAutoAlphaFlag = null;
+  this.uOverlayAlpha = null;
 
   // Buffers and arrays
   this.squareVerticesBuffer = null;
@@ -120,26 +122,63 @@ ColorAdjuster.prototype.setWindow = function(width, center, validBits, invalidCo
   this.externalColorTable = false;
 }
 
-ColorAdjuster.prototype.enableOverlay = function(enable) {
-  this.overlayEnabled = enable ? 1 : 0;
-}
-
-ColorAdjuster.prototype.setOverlayOpacity = function(opacity) {
-  this.overlayOpacity = opacity;
-}
-
-// image is an HTMLImageElement
+/* Set an overlay image
+ * image is a JavaScript Image object (color or grayscale, with optional alpha)
+ * The given image will be drawn on top of the primary grayscale image when
+ * drawImage is called, if the overlay is enabled.  The overlay image is not
+ * affected by the window / level values.
+ *
+ * Notes:
+ * Call enableOverlay(true/false) to enable disable drawing the overlay.
+ *      (enableOverlay can be called before or after setOverlayImage)
+ * Call setOverlayAlpha([0. ,1. ]) to modify the transparrency of the overlay
+ * Call enableOverlayAutoAlpha to add alpha blending based on pixel brighness
+ */
 ColorAdjuster.prototype.setOverlayImage = function(image) {
   var gl = this.gl;
   if (!gl)
     return;
 
+  this.overlayImageSet = (image != null);
   gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
 }
 
-/* Call this to refresh the image after setting the image data
- * or the color table */
+/* Enable or disable the overlay image
+ *
+ * This method can be called before an overlay image is set, but will
+ * not take effect until a non-null image is passed to setOverlayImage().
+ */
+ColorAdjuster.prototype.enableOverlay = function(enable) {
+  this.overlayEnabled = enable ? 1 : 0;
+}
+
+/* Enable or disable auto-alpha
+ *
+ * This feature generates an alpha value for each pixel based on the
+ * brightness of the pixel.  This can be used to overlay images that
+ * lack an alpha channel, so that the underlying grayscale image will
+ * show through the dark areas of the overlay image.
+ *
+ * If the overlay image has an alpha channel, and auto-alpha is enabled,
+ * the alpha value for a pixel will be the image alpha multiplied by the
+ * auto alpha.
+ */
+ColorAdjuster.prototype.enableOverlayAutoAlpha = function(enable) {
+  this.overlayAutoAlphaEnabled = enable ? 1 : 0;
+}
+
+/* Modify the alpha of the overlay image
+ *
+ * The given alpha [0. , 1.] will be multiplied by the image alpha value
+ * for each pixel.  Note that for images without an alpha channel, the alpha
+ * value is 1.
+ */
+ColorAdjuster.prototype.setOverlayAlpha = function(alpha) {
+  this.overlayAlpha = alpha;
+}
+
+/* Redraw the image / overlay with the current settings */
 ColorAdjuster.prototype.drawImage = function(invert) {
   var gl = this.gl;
   if (!gl)
@@ -176,8 +215,15 @@ ColorAdjuster.prototype.drawImage = function(invert) {
   gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
   gl.uniform1i(this.overlaySampler, 2);
 
-  gl.uniform1i(this.uOverlayFlag, this.overlayEnabled);
-  gl.uniform1f(this.uOverlayOpacity, this.overlayOpacity);
+  if (this.overlayEnabled && this.overlayImageSet) {
+    gl.uniform1i(this.uOverlayFlag, true);
+    gl.uniform1i(this.uOverlayAutoAlphaFlag, this.overlayAutoAlphaEnabled);
+    gl.uniform1f(this.uOverlayAlpha, this.overlayAlpha);
+  }
+  else {
+    gl.uniform1i(this.uOverlayFlag, false);
+  }
+
 
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
@@ -332,7 +378,8 @@ ColorAdjuster.prototype.initShaders = function() {
   this.windowSampler = gl.getUniformLocation(program, "uColorSampler");
   this.overlaySampler = gl.getUniformLocation(program, "uOverlaySampler");
   this.uOverlayFlag = gl.getUniformLocation(program, "uOverlayFlag");
-  this.uOverlayOpacity = gl.getUniformLocation(program, "uOverlayOpacity");
+  this.uOverlayAutoAlphaFlag = gl.getUniformLocation(program, "uOverlayAutoAlphaFlag");
+  this.uOverlayAlpha = gl.getUniformLocation(program, "uOverlayAlpha");
 }
 
 ColorAdjuster.prototype.checkLut = function(colorBits) {
@@ -383,30 +430,22 @@ var g_fragmentShader = "\
     uniform sampler2D uColorSampler;\
     uniform sampler2D uOverlaySampler;\
     uniform int uOverlayFlag;\
-    uniform float uOverlayOpacity;\
+    uniform int uOverlayAutoAlphaFlag;\
+    uniform float uOverlayAlpha;\
     \
     void main(void) {\
       vec4 data = texture2D(uDataSampler, vTextureCoord);\
       gl_FragColor = texture2D(uColorSampler, vec2(data.r,data.a) );\
       \
       if (uOverlayFlag != 0) { \
-        vec4 overlayColor = texture2D(uOverlaySampler, vTextureCoord);\
-        float alpha = overlayColor.a * uOverlayOpacity;\
+        vec4 overlay = texture2D(uOverlaySampler, vTextureCoord);\
+        float alpha = overlay.a * uOverlayAlpha;\
+        if (uOverlayAutoAlphaFlag != 0) { \
+          float brightness = (overlay.r + overlay.g + overlay.b) / 3.; \
+          alpha *= brightness; \
+        } \
         gl_FragColor.rgb = gl_FragColor.rgb * (1. - alpha) + \
-            overlayColor.rgb * alpha; \
+            overlay.rgb * alpha; \
       } \
-    }\
-    ";
-var g_testingfragmentShader = "\
-    #version 100\n\
-    precision highp float;\
-    varying highp vec2 vTextureCoord;\
-    uniform sampler2D uDataSampler;\
-    uniform sampler2D uColorSampler;\
-    uniform sampler2D uOverlaySampler;\
-    uniform int uOverlayFlag;\
-    \
-    void main(void) {\
-      gl_FragColor = texture2D(uOverlaySampler, vTextureCoord);\
     }\
     ";

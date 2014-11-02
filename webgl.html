@@ -39,6 +39,8 @@
               addEventListener("change", onSettingsChanged, false);
             document.getElementById("overlayCheckbox").
               addEventListener("change", onSettingsChanged, false);
+            document.getElementById("autoAlphaCheckbox").
+              addEventListener("change", onSettingsChanged, false);
             document.getElementById("overlaySlider").
               addEventListener("input", onSettingsChanged, false);
           }
@@ -63,8 +65,11 @@
             var overlayCheckbox = document.getElementById("overlayCheckbox");
             adjuster.enableOverlay(overlayCheckbox.checked);
 
+            var autoAlphaCheckbox = document.getElementById("autoAlphaCheckbox");
+            adjuster.enableOverlayAutoAlpha(autoAlphaCheckbox.checked);
+
             var overlaySlider = document.getElementById("overlaySlider");
-            adjuster.setOverlayOpacity(overlaySlider.value / 100.);
+            adjuster.setOverlayAlpha(overlaySlider.value / 100.);
           }
 
           function redrawImage() {
@@ -162,7 +167,8 @@
       <input id="ImageButton" type="button" value="Image">  Note:  Set window / level to the left to show 0-255 values<br/>
       <input id="invertCheckbox" type="checkbox" value="inverted">Invert<br/>
       <input id="overlayCheckbox" type="checkbox" value="inverted">Enable Overlay<br/>
-      <input id="overlaySlider" type="range" min="0" max="100" value="100" >Overlay Opacity<br/>
+      <input id="autoAlphaCheckbox" type="checkbox" value="inverted">Enable Auto-alpha<br/>
+      <input id="overlaySlider" type="range" min="0" max="100" value="100" >Adjust Overlay Alpha<br/>
     </body>
 
 </html>
