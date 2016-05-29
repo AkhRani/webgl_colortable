@@ -1,4 +1,5 @@
 function ColorAdjuster() {
+  "use strict";
   // Miscellaneous state
   this.gl = null;
   this.externalColorTable = false;
@@ -6,6 +7,8 @@ function ColorAdjuster() {
   this.overlayEnabled = false;
   this.autoAlpha = false;
   this.overlayAlpha = 1.;
+  this.windowBegin = 0;
+  this.windowEnd = 0;
 
   // GL Attribute IDs
   this.vertexPosition = null;
@@ -123,9 +126,8 @@ ColorAdjuster.prototype.setWindow = function(width, center, validBits, invalidCo
   }
   this.doSetColorTable(this.lut);
   this.externalColorTable = false;
-
-  gl.uniform1f(this.uWindowBegin, center - width/2);
-  gl.uniform1f(this.uWindowEnd, center + width/2);
+  this.windowBegin = center - width / 2;
+  this.windowEnd = center + width / 2;
 }
 
 /* Set an overlay image
@@ -210,13 +212,14 @@ ColorAdjuster.prototype.drawImage = function(invert) {
   gl.vertexAttribPointer(this.textureCoord, 2, gl.FLOAT, false, 0, 0);
 
   // Set up blending if needed
-  if (this.overlayEnabled && this.overlayImageSet) {
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  }
-  else {
-    gl.disable(gl.BLEND);
-  }
+  gl.disable(gl.BLEND);
+  gl.blendFunc(gl.SRC_COLOR, gl.ZERO);
+
+  gl.uniform1i(this.uGrayscale, this.colorBits === 16);
+  console.log ("color bits ", this.colorBits);
+
+  gl.uniform1f(this.uWindowBegin, this.windowBegin);
+  gl.uniform1f(this.uWindowEnd, this.windowEnd);
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
@@ -226,18 +229,22 @@ ColorAdjuster.prototype.drawImage = function(invert) {
   gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
   gl.uniform1i(this.windowSampler, 1);
 
-  gl.uniform1i(this.uGrayscale, true);
   gl.uniform1i(this.uCustomColors, this.externalColorTable);
   
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   if (this.overlayEnabled && this.overlayImageSet) {
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     // Copy screen coordinates to GL
     gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, this.squareArray, gl.STATIC_DRAW);
     gl.vertexAttribPointer(this.vertexPosition, 3, gl.FLOAT, false, 0, 0);
 
     gl.uniform1i(this.uGrayscale, false);
+    gl.uniform1f(this.uWindowBegin, 0);
+    gl.uniform1f(this.uWindowEnd, 0);
+
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
     gl.uniform1i(this.imageSampler, 2);
@@ -255,8 +262,8 @@ function initWebGL(canvas) {
   var gl = null;
   try {
     // Try to grab the standard context, fallback to experimental.
-    gl = canvas.getContext("webgl") ||
-      canvas.getContext("experimental-webgl");
+    gl = canvas.getContext("webgl", {alpha: false}) ||
+      canvas.getContext("experimental-webgl", {alpha: false});
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
     gl.pixelStorei(gl.PACK_ALIGNMENT, 2);
@@ -406,9 +413,9 @@ ColorAdjuster.prototype.initShaders = function() {
 
 ColorAdjuster.prototype.checkLut = function(colorBits) {
   if (this.colorBits != colorBits && this.externalColorTable) {
-    this.colorBits = colorBits;
     this.doSetColorTable(this.lut);
   }
+  this.colorBits = colorBits;
 }
 
 ColorAdjuster.prototype.doSetColorTable = function (data) {
@@ -473,13 +480,17 @@ var g_fragmentShader = "\
       } \
       \
       else { \
-        vec4 overlay = texture2D(uImageSampler, vTextureCoord); \
-        float alpha = overlay.a * uAlpha;\
+        vec4 color = texture2D(uImageSampler, vTextureCoord); \
+        float alpha = color.a * uAlpha;\
         if (uAutoAlpha) { \
-          float brightness = (overlay.r + overlay.g + overlay.b) / 3.; \
+          float brightness = (color.r + color.g + color.b) / 3.; \
           alpha *= brightness; \
         } \
-        gl_FragColor.rgb = overlay.rgb; \
+        if (uWindowBegin != uWindowEnd && color.r == color.g && color.r == color.b) { \
+          float value = smoothstep(uWindowBegin, uWindowEnd, color.r * 255.); \
+          color.rgb = vec3(value, value, value); \
+        } \
+        gl_FragColor.rgb = color.rgb; \
         gl_FragColor.a = alpha; \
       } \
     }\
