@@ -4,7 +4,7 @@ function ColorAdjuster() {
   this.externalColorTable = false;
   this.colorBits = 16;
   this.overlayEnabled = false;
-  this.overlayAutoAlphaEnabled = false;
+  this.autoAlpha = false;
   this.overlayAlpha = 1.;
 
   // GL Attribute IDs
@@ -14,10 +14,13 @@ function ColorAdjuster() {
   // GL Uniform IDs
   this.dataSampler = null;
   this.windowSampler = null;
-  this.overlaySampler = null;
-  this.uOverlayFlag = null;
-  this.uOverlayAutoAlphaFlag = null;
-  this.uOverlayAlpha = null;
+  this.imageSampler = null;
+  this.uGrayscale = null;
+  this.uCustomColors = null;
+  this.uWindowBegin = null;
+  this.uWindowEnd = null;
+  this.uAutoAlpha = null;
+  this.uAlpha = null;
 
   // Buffers and arrays
   this.squareVerticesBuffer = null;
@@ -26,7 +29,7 @@ function ColorAdjuster() {
   this.normalTextureCoords = null;
   this.invertedTextureCoords = null;
   this.dataTexture = null;
-  this.overlayTexture = null;
+  this.imageTexture = null;
   this.lutTexture = null;
   this.lut = null;
 }
@@ -120,6 +123,9 @@ ColorAdjuster.prototype.setWindow = function(width, center, validBits, invalidCo
   }
   this.doSetColorTable(this.lut);
   this.externalColorTable = false;
+
+  gl.uniform1f(this.uWindowBegin, center - width/2);
+  gl.uniform1f(this.uWindowEnd, center + width/2);
 }
 
 /* Set an overlay image
@@ -140,7 +146,7 @@ ColorAdjuster.prototype.setOverlayImage = function(image) {
     return;
 
   this.overlayImageSet = (image != null);
-  gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
+  gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
 }
 
@@ -165,7 +171,7 @@ ColorAdjuster.prototype.enableOverlay = function(enable) {
  * auto alpha.
  */
 ColorAdjuster.prototype.enableOverlayAutoAlpha = function(enable) {
-  this.overlayAutoAlphaEnabled = enable ? 1 : 0;
+  this.autoAlpha = enable ? 1 : 0;
 }
 
 /* Modify the alpha of the overlay image
@@ -203,6 +209,15 @@ ColorAdjuster.prototype.drawImage = function(invert) {
   }
   gl.vertexAttribPointer(this.textureCoord, 2, gl.FLOAT, false, 0, 0);
 
+  // Set up blending if needed
+  if (this.overlayEnabled && this.overlayImageSet) {
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  }
+  else {
+    gl.disable(gl.BLEND);
+  }
+
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
   gl.uniform1i(this.dataSampler, 0);
@@ -211,21 +226,25 @@ ColorAdjuster.prototype.drawImage = function(invert) {
   gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
   gl.uniform1i(this.windowSampler, 1);
 
-  gl.activeTexture(gl.TEXTURE2);
-  gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
-  gl.uniform1i(this.overlaySampler, 2);
+  gl.uniform1i(this.uGrayscale, true);
+  gl.uniform1i(this.uCustomColors, this.externalColorTable);
+  
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   if (this.overlayEnabled && this.overlayImageSet) {
-    gl.uniform1i(this.uOverlayFlag, true);
-    gl.uniform1i(this.uOverlayAutoAlphaFlag, this.overlayAutoAlphaEnabled);
-    gl.uniform1f(this.uOverlayAlpha, this.overlayAlpha);
-  }
-  else {
-    gl.uniform1i(this.uOverlayFlag, false);
-  }
+    // Copy screen coordinates to GL
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.squareArray, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(this.vertexPosition, 3, gl.FLOAT, false, 0, 0);
 
-
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.uniform1i(this.uGrayscale, false);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
+    gl.uniform1i(this.imageSampler, 2);
+    gl.uniform1i(this.uAutoAlpha, this.autoAlpha);
+    gl.uniform1f(this.uAlpha, this.overlayAlpha);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
 }
 
 /**********************************************/
@@ -319,8 +338,8 @@ ColorAdjuster.prototype.initTextures = function() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
   // This is the optional overlay image
-  this.overlayTexture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
+  this.imageTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -376,14 +395,17 @@ ColorAdjuster.prototype.initShaders = function() {
 
   this.dataSampler = gl.getUniformLocation(program, "uDataSampler");
   this.windowSampler = gl.getUniformLocation(program, "uColorSampler");
-  this.overlaySampler = gl.getUniformLocation(program, "uOverlaySampler");
-  this.uOverlayFlag = gl.getUniformLocation(program, "uOverlayFlag");
-  this.uOverlayAutoAlphaFlag = gl.getUniformLocation(program, "uOverlayAutoAlphaFlag");
-  this.uOverlayAlpha = gl.getUniformLocation(program, "uOverlayAlpha");
+  this.imageSampler = gl.getUniformLocation(program, "uImageSampler");
+  this.uGrayscale = gl.getUniformLocation(program, "uGrayscale");
+  this.uCustomColors = gl.getUniformLocation(program, "uCustomColors");
+  this.uWindowBegin = gl.getUniformLocation(program, "uWindowBegin");
+  this.uWindowEnd = gl.getUniformLocation(program, "uWindowEnd");
+  this.uAutoAlpha = gl.getUniformLocation(program, "uAutoAlpha");
+  this.uAlpha = gl.getUniformLocation(program, "uAlpha");
 }
 
 ColorAdjuster.prototype.checkLut = function(colorBits) {
-  if (this.colorBits != colorBits && !this.externalColorTable) {
+  if (this.colorBits != colorBits && this.externalColorTable) {
     this.colorBits = colorBits;
     this.doSetColorTable(this.lut);
   }
@@ -426,26 +448,39 @@ var g_fragmentShader = "\
     #version 100\n\
     precision highp float;\
     varying highp vec2 vTextureCoord;\
+    \
     uniform sampler2D uDataSampler;\
+    uniform bool uGrayscale;\
+    uniform bool uCustomColors;\
     uniform sampler2D uColorSampler;\
-    uniform sampler2D uOverlaySampler;\
-    uniform int uOverlayFlag;\
-    uniform int uOverlayAutoAlphaFlag;\
-    uniform float uOverlayAlpha;\
+    uniform float uWindowBegin;\
+    uniform float uWindowEnd;\
+    \
+    uniform sampler2D uImageSampler;\
+    uniform bool uAutoAlpha;\
+    uniform float uAlpha;\
     \
     void main(void) {\
-      vec4 data = texture2D(uDataSampler, vTextureCoord);\
-      gl_FragColor = texture2D(uColorSampler, vec2(data.r,data.a) );\
+      if (uGrayscale) { \
+        vec4 data = texture2D(uDataSampler, vTextureCoord); \
+        if (uCustomColors) { \
+          gl_FragColor = texture2D(uColorSampler, vec2(data.r,data.a) ); \
+        } else { \
+          float value = data.a * 65280. + data.r * 255.; \
+          value = smoothstep(uWindowBegin, uWindowEnd, value); \
+          gl_FragColor = vec4(value, value, value, 1.); \
+        } \
+      } \
       \
-      if (uOverlayFlag != 0) { \
-        vec4 overlay = texture2D(uOverlaySampler, vTextureCoord);\
-        float alpha = overlay.a * uOverlayAlpha;\
-        if (uOverlayAutoAlphaFlag != 0) { \
+      else { \
+        vec4 overlay = texture2D(uImageSampler, vTextureCoord); \
+        float alpha = overlay.a * uAlpha;\
+        if (uAutoAlpha) { \
           float brightness = (overlay.r + overlay.g + overlay.b) / 3.; \
           alpha *= brightness; \
         } \
-        gl_FragColor.rgb = gl_FragColor.rgb * (1. - alpha) + \
-            overlay.rgb * alpha; \
+        gl_FragColor.rgb = overlay.rgb; \
+        gl_FragColor.a = alpha; \
       } \
     }\
     ";
