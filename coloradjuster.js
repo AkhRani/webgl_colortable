@@ -119,7 +119,7 @@ ColorAdjuster.prototype.setWindow = function(width, center, validBits, invalidCo
  */
 ColorAdjuster.prototype.setAlpha = function(global, auto) {
   this.useAlpha = true;
-  this.globalAlpha = alpha;
+  this.globalAlpha = global;
   this.autoAlpha = auto ? 1 : 0;
 }
 
@@ -408,14 +408,12 @@ var g_fragmentShader = "\
           float value = data.a * 65280. + data.r * 255.; \
           value = smoothstep(uWindowBegin, uWindowEnd, value); \
           gl_FragColor = vec4(value, value, value, 1.); \
-          return; \
         } \
         /* FIXME unify lut format */ \
         if (uCustomColors) { \
           gl_FragColor = texture2D(uLutSampler, vec2(data.r, data.a) ); \
         } \
       } else { \
-        return; \
         vec4 color = texture2D(uImageSampler, vTextureCoord); \
         /* Remap grayscale */ \
         if (color.r == color.g && color.r == color.b) { \
@@ -424,9 +422,10 @@ var g_fragmentShader = "\
             color.rgb = vec3(value, value, value); \
           } \
           if (uCustomColors) { \
-            gl_FragColor = texture2D(uLutSampler, vec2(color.r, color.a) ); \
+            color = texture2D(uLutSampler, vec2(color.r, color.a) ); \
           } \
         } \
+        gl_FragColor = color; \
       } \
       float alpha = gl_FragColor.a * uAlpha; \
       if (uAutoAlpha) { \

@@ -8,16 +8,19 @@
           adjuster = new ColorAdjuster();
           var testPattern = false;
           var data = null;
+          var useData = false;
+          var bgImage = null;
+          var overlayImage = null;
 
           function start() {
             var canvas = document.getElementById("glcanvas");
             adjuster.init(canvas);
 
             overlayImage = new Image();
-            overlayImage.onload = function () {
-              // adjuster.setOverlayImage(overlayImage);
-            }
             overlayImage.src = "overlay.png";
+
+            bgImage = new Image();
+            bgImage.src = "image_1.jpg";
 
             onGradientButton(null);
             redrawImage();
@@ -66,9 +69,6 @@
 
             // Overlay settings
             /*
-            var overlayCheckbox = document.getElementById("overlayCheckbox");
-            adjuster.enableOverlay(overlayCheckbox.checked);
-
             var autoAlphaCheckbox = document.getElementById("autoAlphaCheckbox");
             adjuster.enableOverlayAutoAlpha(autoAlphaCheckbox.checked);
 
@@ -81,7 +81,18 @@
               // TODO:  Support npot
               adjuster.setData(data, 128, 64);
             }
+            else {
+              adjuster.setImage(bgImage);
+            }
             adjuster.draw(invertControl.checked);
+
+            var overlayCheckbox = document.getElementById("overlayCheckbox");
+            if (overlayCheckbox.checked) { 
+              adjuster.setImage(overlayImage);
+              adjuster.setAlpha(.5, false);
+              adjuster.draw(invertControl.checked);
+            }
+
           }
 
           function onSettingsChanged(evt) {
@@ -142,16 +153,13 @@
             }
             adjuster.setImageData(data, 256, 256);
             testPattern = true;
+            useData = true;
             redrawImage();
           }
 
           function onImageButton() {
-            myImage = new Image();
-            myImage.onload = function () {
-              adjuster.setImage(myImage);
-              redrawImage();
-            }
-            myImage.src = "image_1.jpg";
+            useData = false;
+            redrawImage();
           }
 
         </script>
