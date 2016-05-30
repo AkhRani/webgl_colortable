@@ -67,14 +67,6 @@
 
             adjuster.setWindow(width, center, 12, [128, 128, 0]);
 
-            // Overlay settings
-            /*
-            var autoAlphaCheckbox = document.getElementById("autoAlphaCheckbox");
-            adjuster.enableOverlayAutoAlpha(autoAlphaCheckbox.checked);
-
-            var overlaySlider = document.getElementById("overlaySlider");
-            adjuster.setOverlayAlpha(overlaySlider.value / 100.);
-            */
 
             var invertControl = document.getElementById("invertCheckbox");
             if (useData) {
@@ -88,8 +80,14 @@
 
             var overlayCheckbox = document.getElementById("overlayCheckbox");
             if (overlayCheckbox.checked) { 
+              var overlaySlider = document.getElementById("overlaySlider");
+              var globalAlpha = overlaySlider.value / 100.;
+
+              var autoAlphaCheckbox = document.getElementById("autoAlphaCheckbox");
+              var autoAlpha = autoAlphaCheckbox.checked;
+
               adjuster.setImage(overlayImage);
-              adjuster.setAlpha(.5, false);
+              adjuster.setAlpha(globalAlpha, autoAlpha);
               adjuster.draw(invertControl.checked);
             }
 

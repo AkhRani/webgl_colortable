@@ -70,7 +70,7 @@ ColorAdjuster.prototype.setData = function(data, width, height) {
   this.checkLut(16);
 }
 
-/* Set the base image to 8-bit RGB
+/* Set the base image to 8-bit RGBA
  *
  * image is a JavaScript Image object
  */
@@ -80,7 +80,7 @@ ColorAdjuster.prototype.setImage = function(image) {
     return;
 
   gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
   this.checkLut(8);
 }
 
