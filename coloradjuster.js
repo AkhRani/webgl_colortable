@@ -19,8 +19,8 @@ function ColorAdjuster() {
   this.lutSampler = null;
   this.uGrayscale = null;
   this.uCustomColors = null;
-  this.uWindowBegin = null;
-  this.uWindowEnd = null;
+  this.uWinBegin = null;
+  this.uWinEnd = null;
   this.uAutoAlpha = null;
   this.uAlpha = null;
 
@@ -86,7 +86,7 @@ ColorAdjuster.prototype.setImage = function(image) {
 
 /* This is the most general-purpose way to set the mapping from
  * grayscale to 8-bit color.  The data argument must be a Uint8Array,
- * with length equal to 65536*3.  Element 0 is the output red component
+ * with length equal to 2048*3.  Element 0 is the output red component
  * for 16-bit value 0x0000.  Element 1 is the green component, etc.
  * If the current data texture is an Image (jpg, png, etc) then only
  * the first 256 values will be used. */
@@ -95,7 +95,7 @@ ColorAdjuster.prototype.setColorTable = function(data) {
   this.doSetColorTable(data);
 }
 
-/* This is a convenience function to simplify calling setColorTable */
+/* Color table is applied after windowing */
 ColorAdjuster.prototype.setWindow = function(width, center, validBits, invalidColor) {
   this.useWindow = true;
   this.windowBegin = center - width / 2;
@@ -176,8 +176,8 @@ ColorAdjuster.prototype.draw = function(invert) {
 
   gl.uniform1i(this.uWindow, this.useWindow);
   if (this.useWindow) {
-    gl.uniform1f(this.uWindowBegin, this.windowBegin);
-    gl.uniform1f(this.uWindowEnd, this.windowEnd);
+    gl.uniform1f(this.uWinBegin, this.windowBegin);
+    gl.uniform1f(this.uWinEnd, this.windowEnd);
   }
 
   gl.uniform1i(this.uCustomColors, this.useLut);
@@ -339,34 +339,31 @@ ColorAdjuster.prototype.initShaders = function() {
   this.uGrayscale = gl.getUniformLocation(program, "uGrayscale");
   this.uCustomColors = gl.getUniformLocation(program, "uCustomColors");
   this.uWindow = gl.getUniformLocation(program, "uWindow");
-  this.uWindowBegin = gl.getUniformLocation(program, "uWindowBegin");
-  this.uWindowEnd = gl.getUniformLocation(program, "uWindowEnd");
+  this.uWinBegin = gl.getUniformLocation(program, "uWinBegin");
+  this.uWinEnd = gl.getUniformLocation(program, "uWinEnd");
 
   this.uAutoAlpha = gl.getUniformLocation(program, "uAutoAlpha");
   this.uAlpha = gl.getUniformLocation(program, "uAlpha");
 }
 
-// FIXME:  Max length 2048.  Single LUT format.
+// Max length 2048.
 ColorAdjuster.prototype.checkLut = function(colorBits) {
   this.colorBits = colorBits;
 }
 
-// TODO:  Max length 2048.  Single LUT format.
+// Max length 2048.
 ColorAdjuster.prototype.doSetColorTable = function (data) {
   var gl = this.gl;
   if (!gl)
     return;
 
-  gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
-  if (this.colorBits === 16) {
-    // 16-bit grayscale
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 256, 256, 0, gl.RGB,
+  var len = data.length;
+  if (len <= 2048 * 3) {
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, data.length / 3, 1, 0, gl.RGB,
         gl.UNSIGNED_BYTE, data);
-  }
-  else {
-    // 8-bit grayscale
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 256, 1, 0, gl.RGB,
-        gl.UNSIGNED_BYTE, data);
+  } else {
+    console.log("too many COLORZ! ", len);
   }
 }
 
@@ -395,8 +392,8 @@ var g_fragmentShader = "\
     uniform bool uCustomColors;\
     uniform sampler2D uLutSampler;\
     uniform bool uWindow; \
-    uniform float uWindowBegin;\
-    uniform float uWindowEnd;\
+    uniform float uWinBegin;\
+    uniform float uWinEnd;\
     \
     uniform bool uAutoAlpha;\
     uniform float uAlpha;\
@@ -404,25 +401,28 @@ var g_fragmentShader = "\
     void main(void) {\
       if (uGrayscale) { \
         vec4 data = texture2D(uImageSampler, vTextureCoord); \
-        if (uWindow) { \
-          float value = data.a * 65280. + data.r * 255.; \
-          value = smoothstep(uWindowBegin, uWindowEnd, value); \
-          gl_FragColor = vec4(value, value, value, 1.); \
+        float value = data.a * 65280. + data.r * 255.; \
+        if (uWindow && uWinEnd > uWinBegin) { \
+          value = clamp((value - uWinBegin) / (uWinEnd - uWinBegin), 0.0, 1.0); \
+        } else { \
+          value = value / 65535.; \
         } \
-        /* FIXME unify lut format */ \
         if (uCustomColors) { \
-          gl_FragColor = texture2D(uLutSampler, vec2(data.r, data.a) ); \
+          gl_FragColor = texture2D(uLutSampler, vec2(value, .5) ); \
+        } else { \
+          gl_FragColor = vec4(value, value, value, 1.); \
         } \
       } else { \
         vec4 color = texture2D(uImageSampler, vTextureCoord); \
         /* Remap grayscale */ \
         if (color.r == color.g && color.r == color.b) { \
-          if (uWindow) { \
-            float value = smoothstep(uWindowBegin, uWindowEnd, color.r * 255.); \
+          if (uWindow && uWinEnd > uWinBegin) { \
+            float value = color.r * 255.; \
+            value = clamp((value - uWinBegin) / (uWinEnd - uWinBegin), 0.0, 1.0); \
             color.rgb = vec3(value, value, value); \
           } \
           if (uCustomColors) { \
-            color = texture2D(uLutSampler, vec2(color.r, color.a) ); \
+            color = texture2D(uLutSampler, vec2(color.r, .5) ); \
           } \
         } \
         gl_FragColor = color; \
