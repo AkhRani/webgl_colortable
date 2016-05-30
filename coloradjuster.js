@@ -2,11 +2,11 @@ function ColorAdjuster() {
   "use strict";
   // Miscellaneous state
   this.gl = null;
-  this.externalColorTable = false;
   this.colorBits = 16;
-  this.overlayEnabled = false;
+  this.useLut = false;
+  this.useAlpha = false;
   this.autoAlpha = false;
-  this.overlayAlpha = 1.;
+  this.globalAlpha = 1.;
   this.windowBegin = 0;
   this.windowEnd = 0;
 
@@ -31,9 +31,7 @@ function ColorAdjuster() {
   this.normalTextureCoords = null;
   this.invertedTextureCoords = null;
   this.baseTexture = null;
-  this.overlayTexture = null;
   this.lutTexture = null;
-  this.lut = null;
 }
 
 /*************************************************************/
@@ -58,7 +56,7 @@ ColorAdjuster.prototype.init = function(canvas) {
  *
  * data is 16-bit grayscale data, in a Uint16Array 
  * or a Uint8Array */
-ColorAdjuster.prototype.setImageData = function(data, width, height) {
+ColorAdjuster.prototype.setData = function(data, width, height) {
   var gl = this.gl;
   if (!gl)
     return;
@@ -87,57 +85,29 @@ ColorAdjuster.prototype.setImage = function(image) {
 }
 
 /* This is the most general-purpose way to set the mapping from
- * 16-bit grayscale to 8-bit color.  The data argument must be a Uint8Array,
+ * grayscale to 8-bit color.  The data argument must be a Uint8Array,
  * with length equal to 65536*3.  Element 0 is the output red component
  * for 16-bit value 0x0000.  Element 1 is the green component, etc.
  * If the current data texture is an Image (jpg, png, etc) then only
  * the first 256 values will be used. */
 ColorAdjuster.prototype.setColorTable = function(data) {
-  this.externalColorTable = true;
+  this.useLut = true;
   this.doSetColorTable(data);
 }
 
 /* This is a convenience function to simplify calling setColorTable */
 ColorAdjuster.prototype.setWindow = function(width, center, validBits, invalidColor) {
-  this.externalColorTable = false;
+  this.useWindow = true;
   this.windowBegin = center - width / 2;
   this.windowEnd = center + width / 2;
 }
 
-/* Set an overlay image
+/* Enable alpha blending
  *
- * image is a JavaScript Image object (color or grayscale, with optional alpha)
- * The given image will be drawn on top of the primary grayscale image when
- * drawImage is called, if the overlay is enabled.  The overlay image is not
- * affected by the window / level values.
+ * @param global
+ * Additional alpha factor multiplied by source alpha
  *
- * Notes:
- * Call enableOverlay(true/false) to enable disable drawing the overlay.
- *      (enableOverlay can be called before or after setOverlayImage)
- * Call setOverlayAlpha([0. ,1. ]) to modify the transparrency of the overlay
- * Call enableOverlayAutoAlpha to add alpha blending based on pixel brighness
- */
-ColorAdjuster.prototype.setOverlayImage = function(image) {
-  var gl = this.gl;
-  if (!gl)
-    return;
-
-  this.overlayImageSet = (image != null);
-  gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-}
-
-/* Enable or disable the overlay image
- *
- * This method can be called before an overlay image is set, but will
- * not take effect until a non-null image is passed to setOverlayImage().
- */
-ColorAdjuster.prototype.enableOverlay = function(enable) {
-  this.overlayEnabled = enable ? 1 : 0;
-}
-
-/* Enable or disable auto-alpha
- *
+ * @param auto
  * This feature generates an alpha value for each pixel based on the
  * brightness of the pixel.  This can be used to overlay images that
  * lack an alpha channel, so that the underlying grayscale image will
@@ -147,22 +117,13 @@ ColorAdjuster.prototype.enableOverlay = function(enable) {
  * the alpha value for a pixel will be the image alpha multiplied by the
  * auto alpha.
  */
-ColorAdjuster.prototype.enableOverlayAutoAlpha = function(enable) {
-  this.autoAlpha = enable ? 1 : 0;
+ColorAdjuster.prototype.setAlpha = function(global, auto) {
+  this.useAlpha = true;
+  this.globalAlpha = alpha;
+  this.autoAlpha = auto ? 1 : 0;
 }
 
-/* Modify the alpha of the overlay image
- *
- * The given alpha [0. , 1.] will be multiplied by the image alpha value
- * for each pixel.  Note that for images without an alpha channel, the alpha
- * value is 1.
- */
-ColorAdjuster.prototype.setOverlayAlpha = function(alpha) {
-  this.overlayAlpha = alpha;
-}
-
-/* Redraw the image / overlay with the current settings */
-ColorAdjuster.prototype.drawImage = function(invert) {
+ColorAdjuster.prototype.clear = function() {
   var gl = this.gl;
   if (!gl)
     return;
@@ -170,6 +131,14 @@ ColorAdjuster.prototype.drawImage = function(invert) {
   // In case the canvas was resized
   gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
   gl.clear(gl.COLOR_BUFFER_BIT);
+}
+
+/* draw the image / overlay */
+ColorAdjuster.prototype.draw = function(invert) {
+  "use strict";
+  var gl = this.gl;
+  if (!gl)
+    return;
 
   // Copy screen coordinates to GL
   gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
@@ -186,48 +155,43 @@ ColorAdjuster.prototype.drawImage = function(invert) {
   }
   gl.vertexAttribPointer(this.textureCoord, 2, gl.FLOAT, false, 0, 0);
 
-  // Set up blending if needed
-  gl.disable(gl.BLEND);
-  gl.blendFunc(gl.SRC_COLOR, gl.ZERO);
+  if (this.useAlpha) {
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniform1i(this.uAutoAlpha, this.autoAlpha);
+    gl.uniform1f(this.uAlpha, this.globalAlpha);
+  }
+  else {
+    gl.disable(gl.BLEND);
+    gl.blendFunc(gl.SRC_COLOR, gl.ZERO);
+    gl.uniform1i(this.uAutoAlpha, false);
+    gl.uniform1f(this.uAlpha, 1);
+  }
 
   gl.uniform1i(this.uGrayscale, this.colorBits === 16);
-  console.log ("color bits ", this.colorBits);
-
-  gl.uniform1f(this.uWindowBegin, this.windowBegin);
-  gl.uniform1f(this.uWindowEnd, this.windowEnd);
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
   gl.uniform1i(this.imageSampler, 0);
 
-  gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
-  gl.uniform1i(this.lutSampler, 1);
+  gl.uniform1i(this.uWindow, this.useWindow);
+  if (this.useWindow) {
+    gl.uniform1f(this.uWindowBegin, this.windowBegin);
+    gl.uniform1f(this.uWindowEnd, this.windowEnd);
+  }
 
-  gl.uniform1i(this.uCustomColors, this.externalColorTable);
+  gl.uniform1i(this.uCustomColors, this.useLut);
+  if (this.useLut) {
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
+    gl.uniform1i(this.lutSampler, 1);
+  }
   
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-  if (this.overlayEnabled && this.overlayImageSet) {
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    // Copy screen coordinates to GL
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, this.squareArray, gl.STATIC_DRAW);
-    gl.vertexAttribPointer(this.vertexPosition, 3, gl.FLOAT, false, 0, 0);
-
-    gl.uniform1i(this.uGrayscale, false);
-    gl.uniform1f(this.uWindowBegin, 0);
-    gl.uniform1f(this.uWindowEnd, 0);
-
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
-    gl.uniform1i(this.imageSampler, 0);
-
-    gl.uniform1i(this.uAutoAlpha, this.autoAlpha);
-    gl.uniform1f(this.uAlpha, this.overlayAlpha);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  }
+  this.useAlpha = false;
+  this.useWindow = false;
+  this.useLut = false;
 }
 
 /**********************************************/
@@ -314,18 +278,9 @@ ColorAdjuster.prototype.initTextures = function() {
 
   // This is the color lookup table, which translates the 16-bit image
   // colors to screen colors.
-  this.lut = new Uint8Array(65536 * 3);
   this.lutTexture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
 
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-  // This is the optional overlay image
-  this.overlayTexture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -383,19 +338,20 @@ ColorAdjuster.prototype.initShaders = function() {
   this.lutSampler = gl.getUniformLocation(program, "uLutSampler");
   this.uGrayscale = gl.getUniformLocation(program, "uGrayscale");
   this.uCustomColors = gl.getUniformLocation(program, "uCustomColors");
+  this.uWindow = gl.getUniformLocation(program, "uWindow");
   this.uWindowBegin = gl.getUniformLocation(program, "uWindowBegin");
   this.uWindowEnd = gl.getUniformLocation(program, "uWindowEnd");
+
   this.uAutoAlpha = gl.getUniformLocation(program, "uAutoAlpha");
   this.uAlpha = gl.getUniformLocation(program, "uAlpha");
 }
 
+// FIXME:  Max length 2048.  Single LUT format.
 ColorAdjuster.prototype.checkLut = function(colorBits) {
-  if (this.colorBits != colorBits && this.externalColorTable) {
-    this.doSetColorTable(this.lut);
-  }
   this.colorBits = colorBits;
 }
 
+// TODO:  Max length 2048.  Single LUT format.
 ColorAdjuster.prototype.doSetColorTable = function (data) {
   var gl = this.gl;
   if (!gl)
@@ -438,6 +394,7 @@ var g_fragmentShader = "\
     uniform bool uGrayscale;\
     uniform bool uCustomColors;\
     uniform sampler2D uLutSampler;\
+    uniform bool uWindow; \
     uniform float uWindowBegin;\
     uniform float uWindowEnd;\
     \
@@ -447,28 +404,35 @@ var g_fragmentShader = "\
     void main(void) {\
       if (uGrayscale) { \
         vec4 data = texture2D(uImageSampler, vTextureCoord); \
-        if (uCustomColors) { \
-          gl_FragColor = texture2D(uLutSampler, vec2(data.r, data.a) ); \
-        } else { \
+        if (uWindow) { \
           float value = data.a * 65280. + data.r * 255.; \
           value = smoothstep(uWindowBegin, uWindowEnd, value); \
           gl_FragColor = vec4(value, value, value, 1.); \
+          return; \
         } \
-      } \
-      \
-      else { \
+        /* FIXME unify lut format */ \
+        if (uCustomColors) { \
+          gl_FragColor = texture2D(uLutSampler, vec2(data.r, data.a) ); \
+        } \
+      } else { \
+        return; \
         vec4 color = texture2D(uImageSampler, vTextureCoord); \
-        float alpha = color.a * uAlpha;\
-        if (uAutoAlpha) { \
-          float brightness = (color.r + color.g + color.b) / 3.; \
-          alpha *= brightness; \
+        /* Remap grayscale */ \
+        if (color.r == color.g && color.r == color.b) { \
+          if (uWindow) { \
+            float value = smoothstep(uWindowBegin, uWindowEnd, color.r * 255.); \
+            color.rgb = vec3(value, value, value); \
+          } \
+          if (uCustomColors) { \
+            gl_FragColor = texture2D(uLutSampler, vec2(color.r, color.a) ); \
+          } \
         } \
-        if (uWindowBegin != uWindowEnd && color.r == color.g && color.r == color.b) { \
-          float value = smoothstep(uWindowBegin, uWindowEnd, color.r * 255.); \
-          color.rgb = vec3(value, value, value); \
-        } \
-        gl_FragColor.rgb = color.rgb; \
-        gl_FragColor.a = alpha; \
       } \
+      float alpha = gl_FragColor.a * uAlpha; \
+      if (uAutoAlpha) { \
+        float brightness = (gl_FragColor.r + gl_FragColor.g + gl_FragColor.b) / 3.; \
+        alpha *= brightness; \
+      } \
+      gl_FragColor.a = alpha; \
     }\
     ";

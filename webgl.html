@@ -7,6 +7,7 @@
         <script>
           adjuster = new ColorAdjuster();
           var testPattern = false;
+          var data = null;
 
           function start() {
             var canvas = document.getElementById("glcanvas");
@@ -14,12 +15,12 @@
 
             overlayImage = new Image();
             overlayImage.onload = function () {
-              adjuster.setOverlayImage(overlayImage);
+              // adjuster.setOverlayImage(overlayImage);
             }
             overlayImage.src = "overlay.png";
 
-            readWindowAndOverlayControls();
             onGradientButton(null);
+            redrawImage();
 
             document.getElementById("windowControl").
               addEventListener("input", onSettingsChanged, false);
@@ -45,7 +46,9 @@
               addEventListener("input", onSettingsChanged, false);
           }
 
-          function readWindowAndOverlayControls() {
+          function redrawImage() {
+            adjuster.clear();
+
             var windowControl = document.getElementById("windowControl");
             var levelControl =  document.getElementById("levelControl");
 
@@ -62,6 +65,7 @@
             adjuster.setWindow(width, center, 12, [128, 128, 0]);
 
             // Overlay settings
+            /*
             var overlayCheckbox = document.getElementById("overlayCheckbox");
             adjuster.enableOverlay(overlayCheckbox.checked);
 
@@ -70,29 +74,29 @@
 
             var overlaySlider = document.getElementById("overlaySlider");
             adjuster.setOverlayAlpha(overlaySlider.value / 100.);
-          }
+            */
 
-          function redrawImage() {
             var invertControl = document.getElementById("invertCheckbox");
-            adjuster.drawImage(invertControl.checked);
+            if (useData) {
+              // TODO:  Support npot
+              adjuster.setData(data, 128, 64);
+            }
+            adjuster.draw(invertControl.checked);
           }
 
           function onSettingsChanged(evt) {
-            readWindowAndOverlayControls();
             if (testPattern) {
               onGradientButton(null);
             }
-            else {
-              redrawImage();
-            }
+            redrawImage();
           }
 
           function onGradientButton(evt) {
-            var data = new Uint16Array(128*64);
+            data = new Uint16Array(128*64);
             for (i = 0; i < 128*64; i++) {
               data[i] = i;
             }
-            adjuster.setImageData(data, 128, 64);
+            useData = true;
             redrawImage();
           }
 
