@@ -15,9 +15,8 @@ function ColorAdjuster() {
   this.textureCoord = null;
 
   // GL Uniform IDs
-  this.dataSampler = null;
-  this.windowSampler = null;
   this.imageSampler = null;
+  this.windowSampler = null;
   this.uGrayscale = null;
   this.uCustomColors = null;
   this.uWindowBegin = null;
@@ -223,7 +222,7 @@ ColorAdjuster.prototype.drawImage = function(invert) {
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
-  gl.uniform1i(this.dataSampler, 0);
+  gl.uniform1i(this.imageSampler, 0);
 
   gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
@@ -245,9 +244,10 @@ ColorAdjuster.prototype.drawImage = function(invert) {
     gl.uniform1f(this.uWindowBegin, 0);
     gl.uniform1f(this.uWindowEnd, 0);
 
-    gl.activeTexture(gl.TEXTURE2);
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
-    gl.uniform1i(this.imageSampler, 2);
+    gl.uniform1i(this.imageSampler, 0);
+
     gl.uniform1i(this.uAutoAlpha, this.autoAlpha);
     gl.uniform1f(this.uAlpha, this.overlayAlpha);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -400,9 +400,8 @@ ColorAdjuster.prototype.initShaders = function() {
   this.textureCoord = gl.getAttribLocation(program, "aTextureCoord");
   gl.enableVertexAttribArray(this.textureCoord);
 
-  this.dataSampler = gl.getUniformLocation(program, "uDataSampler");
-  this.windowSampler = gl.getUniformLocation(program, "uColorSampler");
   this.imageSampler = gl.getUniformLocation(program, "uImageSampler");
+  this.windowSampler = gl.getUniformLocation(program, "uColorSampler");
   this.uGrayscale = gl.getUniformLocation(program, "uGrayscale");
   this.uCustomColors = gl.getUniformLocation(program, "uCustomColors");
   this.uWindowBegin = gl.getUniformLocation(program, "uWindowBegin");
@@ -456,20 +455,19 @@ var g_fragmentShader = "\
     precision highp float;\
     varying highp vec2 vTextureCoord;\
     \
-    uniform sampler2D uDataSampler;\
+    uniform sampler2D uImageSampler;\
     uniform bool uGrayscale;\
     uniform bool uCustomColors;\
     uniform sampler2D uColorSampler;\
     uniform float uWindowBegin;\
     uniform float uWindowEnd;\
     \
-    uniform sampler2D uImageSampler;\
     uniform bool uAutoAlpha;\
     uniform float uAlpha;\
     \
     void main(void) {\
       if (uGrayscale) { \
-        vec4 data = texture2D(uDataSampler, vTextureCoord); \
+        vec4 data = texture2D(uImageSampler, vTextureCoord); \
         if (uCustomColors) { \
           gl_FragColor = texture2D(uColorSampler, vec2(data.r,data.a) ); \
         } else { \
