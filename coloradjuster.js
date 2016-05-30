@@ -16,7 +16,7 @@ function ColorAdjuster() {
 
   // GL Uniform IDs
   this.imageSampler = null;
-  this.windowSampler = null;
+  this.lutSampler = null;
   this.uGrayscale = null;
   this.uCustomColors = null;
   this.uWindowBegin = null;
@@ -30,8 +30,8 @@ function ColorAdjuster() {
   this.squareArray = null;
   this.normalTextureCoords = null;
   this.invertedTextureCoords = null;
-  this.dataTexture = null;
-  this.imageTexture = null;
+  this.baseTexture = null;
+  this.overlayTexture = null;
   this.lutTexture = null;
   this.lut = null;
 }
@@ -54,7 +54,8 @@ ColorAdjuster.prototype.init = function(canvas) {
   return false;
 }
 
-/* Call this function to set the grayscale image.
+/* Set the base image to 16-bit grayscale.
+ *
  * data is 16-bit grayscale data, in a Uint16Array 
  * or a Uint8Array */
 ColorAdjuster.prototype.setImageData = function(data, width, height) {
@@ -65,19 +66,22 @@ ColorAdjuster.prototype.setImageData = function(data, width, height) {
   // Client can pass 8-bit or 16-bit buffer
   var uint8View = new Uint8Array(data.buffer);
 
-  gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+  gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE_ALPHA, width, height, 0,
       gl.LUMINANCE_ALPHA, gl.UNSIGNED_BYTE, uint8View);
   this.checkLut(16);
 }
 
-// image is an HTMLImageElement
+/* Set the base image to 8-bit RGB
+ *
+ * image is a JavaScript Image object
+ */
 ColorAdjuster.prototype.setImage = function(image) {
   var gl = this.gl;
   if (!gl)
     return;
 
-  gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+  gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
   this.checkLut(8);
 }
@@ -95,41 +99,13 @@ ColorAdjuster.prototype.setColorTable = function(data) {
 
 /* This is a convenience function to simplify calling setColorTable */
 ColorAdjuster.prototype.setWindow = function(width, center, validBits, invalidColor) {
-  var gl = this.gl;
-  if (!gl || validBits < 1 || validBits > 16)
-    return;
-
-  var start = center - width / 2;
-  var validColors = 1 << validBits;
-  var i;
-  for (i = 0; i < start && i < validColors; i++) {
-    this.lut[i*3 + 0] = 0;
-    this.lut[i*3 + 1] = 0;
-    this.lut[i*3 + 2] = 0;
-  }
-  for (; i < start + width && i < validColors; i++) {
-    var scaledValue = (i - start) * 255.0 / width;
-    this.lut[i*3 + 0] = scaledValue;
-    this.lut[i*3 + 1] = scaledValue;
-    this.lut[i*3 + 2] = scaledValue;
-  }
-  for (; i < validColors; i++) {
-    this.lut[i*3 + 0] = 255;
-    this.lut[i*3 + 1] = 255;
-    this.lut[i*3 + 2] = 255;
-  }
-  for (; i < 65536; i++) {
-    this.lut[i*3+0] = invalidColor[0];
-    this.lut[i*3+1] = invalidColor[1];
-    this.lut[i*3+2] = invalidColor[2];
-  }
-  this.doSetColorTable(this.lut);
   this.externalColorTable = false;
   this.windowBegin = center - width / 2;
   this.windowEnd = center + width / 2;
 }
 
 /* Set an overlay image
+ *
  * image is a JavaScript Image object (color or grayscale, with optional alpha)
  * The given image will be drawn on top of the primary grayscale image when
  * drawImage is called, if the overlay is enabled.  The overlay image is not
@@ -147,7 +123,7 @@ ColorAdjuster.prototype.setOverlayImage = function(image) {
     return;
 
   this.overlayImageSet = (image != null);
-  gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
+  gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
 }
 
@@ -221,12 +197,12 @@ ColorAdjuster.prototype.drawImage = function(invert) {
   gl.uniform1f(this.uWindowEnd, this.windowEnd);
 
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+  gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
   gl.uniform1i(this.imageSampler, 0);
 
   gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_2D, this.lutTexture);
-  gl.uniform1i(this.windowSampler, 1);
+  gl.uniform1i(this.lutSampler, 1);
 
   gl.uniform1i(this.uCustomColors, this.externalColorTable);
   
@@ -245,7 +221,7 @@ ColorAdjuster.prototype.drawImage = function(invert) {
     gl.uniform1f(this.uWindowEnd, 0);
 
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
+    gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
     gl.uniform1i(this.imageSampler, 0);
 
     gl.uniform1i(this.uAutoAlpha, this.autoAlpha);
@@ -324,10 +300,13 @@ ColorAdjuster.prototype.initTextures = function() {
   if (!gl)
     return;
 
-  // The data "texture", which is a grayscale image interpreted as a
-  // series of offsets into the lookup table.
-  this.dataTexture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, this.dataTexture);
+  // The base image texture.  In the case of a 16-bit grayscale image,
+  // this texture will contain a luminance-alpha texture, with the
+  // high-order data in the alpha channel, and the low order data
+  // duplicated among the (identical) color values.
+  // In the case of an 8-bit image, this will contain normal RGBA data.
+  this.baseTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -345,8 +324,8 @@ ColorAdjuster.prototype.initTextures = function() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
   // This is the optional overlay image
-  this.imageTexture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, this.imageTexture);
+  this.overlayTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -401,7 +380,7 @@ ColorAdjuster.prototype.initShaders = function() {
   gl.enableVertexAttribArray(this.textureCoord);
 
   this.imageSampler = gl.getUniformLocation(program, "uImageSampler");
-  this.windowSampler = gl.getUniformLocation(program, "uColorSampler");
+  this.lutSampler = gl.getUniformLocation(program, "uLutSampler");
   this.uGrayscale = gl.getUniformLocation(program, "uGrayscale");
   this.uCustomColors = gl.getUniformLocation(program, "uCustomColors");
   this.uWindowBegin = gl.getUniformLocation(program, "uWindowBegin");
@@ -458,7 +437,7 @@ var g_fragmentShader = "\
     uniform sampler2D uImageSampler;\
     uniform bool uGrayscale;\
     uniform bool uCustomColors;\
-    uniform sampler2D uColorSampler;\
+    uniform sampler2D uLutSampler;\
     uniform float uWindowBegin;\
     uniform float uWindowEnd;\
     \
@@ -469,7 +448,7 @@ var g_fragmentShader = "\
       if (uGrayscale) { \
         vec4 data = texture2D(uImageSampler, vTextureCoord); \
         if (uCustomColors) { \
-          gl_FragColor = texture2D(uColorSampler, vec2(data.r,data.a) ); \
+          gl_FragColor = texture2D(uLutSampler, vec2(data.r, data.a) ); \
         } else { \
           float value = data.a * 65280. + data.r * 255.; \
           value = smoothstep(uWindowBegin, uWindowEnd, value); \
