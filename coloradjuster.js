@@ -131,8 +131,8 @@ ColorAdjuster.prototype.setScale = function(scale) {
 }
 
 ColorAdjuster.prototype.setTranslate = function(x, y) {
-  this.translatex = x;
-  this.translatey = y;
+  this.translatex = x * 2;
+  this.translatey = y * 2;
 }
 
 ColorAdjuster.prototype.clear = function() {
@@ -450,7 +450,7 @@ var g_fragmentShader = "\
       } \
       float alpha = gl_FragColor.a * uAlpha; \
       if (uAutoAlpha) { \
-        float brightness = (gl_FragColor.r + gl_FragColor.g + gl_FragColor.b) / 3.; \
+        float brightness = clamp((gl_FragColor.r + gl_FragColor.g + gl_FragColor.b), 0.0, 1.0); \
         alpha *= brightness; \
       } \
       gl_FragColor.a = alpha; \
