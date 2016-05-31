@@ -6,6 +6,9 @@ function ColorAdjuster() {
   this.useLut = false;
   this.useAlpha = false;
   this.autoAlpha = false;
+  this.scale = 1.;
+  this.translatex = 0.;
+  this.translatey = 0.;
   this.globalAlpha = 1.;
   this.windowBegin = 0;
   this.windowEnd = 0;
@@ -67,7 +70,7 @@ ColorAdjuster.prototype.setData = function(data, width, height) {
   gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE_ALPHA, width, height, 0,
       gl.LUMINANCE_ALPHA, gl.UNSIGNED_BYTE, uint8View);
-  this.checkLut(16);
+  this.colorBits = 16;
 }
 
 /* Set the base image to 8-bit RGBA
@@ -81,7 +84,7 @@ ColorAdjuster.prototype.setImage = function(image) {
 
   gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-  this.checkLut(8);
+  this.colorBits = 8;
 }
 
 /* This is the most general-purpose way to set the mapping from
@@ -123,6 +126,15 @@ ColorAdjuster.prototype.setAlpha = function(global, auto) {
   this.autoAlpha = auto ? 1 : 0;
 }
 
+ColorAdjuster.prototype.setScale = function(scale) {
+  this.scale = scale;
+}
+
+ColorAdjuster.prototype.setTranslate = function(x, y) {
+  this.translatex = x;
+  this.translatey = y;
+}
+
 ColorAdjuster.prototype.clear = function() {
   var gl = this.gl;
   if (!gl)
@@ -142,7 +154,17 @@ ColorAdjuster.prototype.draw = function(invert) {
 
   // Copy screen coordinates to GL
   gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, this.squareArray, gl.STATIC_DRAW);
+
+  // Apply scale and translation
+  var scale = this.scale;
+  var view = this.squareArray.map(function(x) { return x * scale });
+  var i;
+  for (i = 0; i < 4; i++) {
+    view[i*3] += this.translatex;
+    view[i*3 + 1] += this.translatey;
+  }
+
+  gl.bufferData(gl.ARRAY_BUFFER, view, gl.STATIC_DRAW);
   gl.vertexAttribPointer(this.vertexPosition, 3, gl.FLOAT, false, 0, 0);
 
   // Copy texture coordinates to GL
@@ -189,9 +211,13 @@ ColorAdjuster.prototype.draw = function(invert) {
   
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
+  // Reset state
   this.useAlpha = false;
   this.useWindow = false;
   this.useLut = false;
+  this.scale = 1.;
+  this.translatex = 0.;
+  this.translatey = 0.;
 }
 
 /**********************************************/
@@ -234,7 +260,7 @@ ColorAdjuster.prototype.initBuffers = function()
     1.0, -1.0, 0.0,       // bottom right
     1.0, 1.0, 0.0         // top right
       ]
-      this.squareArray = new Float32Array(square);
+  this.squareArray = new Float32Array(square);
 
   // Create GL buffer to hold vertex texture coordinates
   this.textureCoordBuffer = gl.createBuffer();
@@ -344,11 +370,6 @@ ColorAdjuster.prototype.initShaders = function() {
 
   this.uAutoAlpha = gl.getUniformLocation(program, "uAutoAlpha");
   this.uAlpha = gl.getUniformLocation(program, "uAlpha");
-}
-
-// Max length 2048.
-ColorAdjuster.prototype.checkLut = function(colorBits) {
-  this.colorBits = colorBits;
 }
 
 // Max length 2048.

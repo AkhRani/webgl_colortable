@@ -80,6 +80,12 @@
             else {
               adjuster.setImage(bgImage);
             }
+            /*
+            var overlaySlider = document.getElementById("overlaySlider");
+            var x = overlaySlider.value / 100.;
+            // adjuster.setScale(x);
+            adjuster.setTranslate(.5 + x, 0);
+            */
             adjuster.draw(invertControl.checked);
 
             var overlayCheckbox = document.getElementById("overlayCheckbox");
