@@ -152,6 +152,9 @@ ColorAdjuster.prototype.draw = function(invert) {
   if (!gl)
     return;
 
+  // In case clear was not called
+  gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+
   // Copy screen coordinates to GL
   gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
 

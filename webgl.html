@@ -3,15 +3,17 @@
     <head>
         <meta charset="UTF-8">
         <title>Web GL Color Lookup</title>
+        <style type="text/css">
+          fieldset {width:18em; height:8em; float:left}
+        </style>
         <script src="coloradjuster.js"></script>
         <script>
-          adjuster = new ColorAdjuster();
-          var testPattern = false;
-          var data = null;
-          var useData = false;
+          "use strict";
+          var adjuster = new ColorAdjuster();
+          var useData = null;
           var bgImage = null;
           var overlayImage = null;
-          var lut = new Uint8Array(3 * 256);
+          var lut = null;
 
           function start() {
             var canvas = document.getElementById("glcanvas");
@@ -23,31 +25,88 @@
             bgImage = new Image();
             bgImage.src = "image_1.jpg";
 
-            onGradientButton(null);
-            redrawImage();
-
             document.getElementById("windowControl").
-              addEventListener("input", onSettingsChanged, false);
+              addEventListener("input", redrawImage, false);
             document.getElementById("levelControl").
-              addEventListener("input", onSettingsChanged, false);
-            document.getElementById("gradientButton").
-              addEventListener("click", onGradientButton, false);
-            document.getElementById("NPOTEvenButton").
-              addEventListener("click", onNpotEvenButton, false);
-            document.getElementById("TestPatternButton").
-              addEventListener("click", onTestPatternButton, false);
-            document.getElementById("ImageButton").
-              addEventListener("click", onImageButton, false);
-            document.getElementById("NPOTOddButton").
-              addEventListener("click", onNpotOddButton, false);
+              addEventListener("input", redrawImage, false);
+            document.getElementById("falseColorControl").
+              addEventListener("click", redrawImage, false);
             document.getElementById("invertCheckbox").
-              addEventListener("change", onSettingsChanged, false);
+              addEventListener("change", redrawImage, false);
             document.getElementById("overlayCheckbox").
-              addEventListener("change", onSettingsChanged, false);
+              addEventListener("change", redrawImage, false);
             document.getElementById("autoAlphaCheckbox").
-              addEventListener("change", onSettingsChanged, false);
+              addEventListener("change", redrawImage, false);
             document.getElementById("overlaySlider").
-              addEventListener("input", onSettingsChanged, false);
+              addEventListener("input", redrawImage, false);
+
+            initLut();
+            initData();
+            redrawImage();
+          }
+
+          function initLut() {
+            // Set up false color look-up table
+            lut = new Uint8Array(3 * 256);
+            var i;
+            for (i = 0; i < 256; i++) {
+              var red = Math.max(100 - Math.abs(100 - i), 0) / 100;
+              red = 255 * Math.min(red*1.5, 1.);
+
+              var green = Math.max(100 - Math.abs(180 - i), 0) / 100;
+              green = 255 * Math.min(green*1.5, 1.);
+              lut[i*3] = red;
+              lut[i*3 + 1] = green;
+              lut[i*3 + 2] = 0;
+            }
+            lut[255*3] = 0;
+            lut[255*3 + 1] = 0;
+            lut[255*3 + 1] = 0;
+          }
+
+          function initData() {
+            function onSetData(data) {
+              return function() {
+                useData = data;
+                redrawImage();
+              }
+            }
+
+            document.getElementById("gradientButton").
+              addEventListener("click", onSetData(createGradient), false);
+            document.getElementById("NPOTEvenButton").
+              addEventListener("click", onSetData(createNpot(14)), false);
+            document.getElementById("NPOTOddButton").
+              addEventListener("click", onSetData(createNpot(13)), false);
+            document.getElementById("imageButton").
+              addEventListener("click", onSetData(null), false);
+          }
+
+          function createGradient() {
+            // Set up grayscale gradient
+            var gradient = {}
+            var data = new Uint16Array(128 * 64)
+            for (i = 0; i < 128*64; i++) {
+              data[i] = i;
+            }
+            gradient.data = data;
+            gradient.width = 128;
+            gradient.height = 64;
+            return gradient;
+          }
+
+          function createNpot(size) {
+            var data = new Uint16Array(size * size);
+            // Fill most of the data with zeroes
+            for (var i = 0; i < size * size; i++) {
+              data[i] = 0;
+            }
+            // put non-zero values at corners
+            data[0] = 1024;
+            data[size - 1] = 2048;
+            data[size * (size-1)] = 3072;
+            data[size * size - 1] = 4095;
+            return { data:data, width:size, height:size }
           }
 
           function redrawImage() {
@@ -56,36 +115,31 @@
             var windowControl = document.getElementById("windowControl");
             var levelControl =  document.getElementById("levelControl");
 
-            // Rescale window width from 256 to 4096
-            var width = windowControl.value * 16;
+            var width = windowControl.value;
+            var range = useData? 4096:256;
+            // Rescale window width
+            width = width * range / 256;
 
             // Determine the highest and lowest possible center values
             var lowestCenter = width / 2;
-            var highestCenter = 4096 - (width / 2);
+            var highestCenter = range - (width / 2);
             var centerRange = (highestCenter - lowestCenter);
             var relativeCenter = levelControl.value / 256.0;
             var center = relativeCenter * centerRange + lowestCenter;
 
             adjuster.setWindow(width, center, 12, [128, 128, 0]);
 
-            if (testPattern) {
+            if (document.getElementById("falseColorControl").checked) {
               adjuster.setColorTable(lut);
             }
 
             var invertControl = document.getElementById("invertCheckbox");
             if (useData) {
-              // TODO:  Support npot
-              adjuster.setData(data, 128, 64);
+              adjuster.setData(useData.data, useData.width, useData.height);
             }
             else {
               adjuster.setImage(bgImage);
             }
-            /*
-            var overlaySlider = document.getElementById("overlaySlider");
-            var x = overlaySlider.value / 100.;
-            // adjuster.setScale(x);
-            adjuster.setTranslate(.5 + x, 0);
-            */
             adjuster.draw(invertControl.checked);
 
             var overlayCheckbox = document.getElementById("overlayCheckbox");
@@ -100,85 +154,43 @@
               adjuster.setAlpha(globalAlpha, autoAlpha);
               adjuster.draw(invertControl.checked);
             }
-
           }
-
-          function onSettingsChanged(evt) {
-            redrawImage();
-          }
-
-          function onGradientButton(evt) {
-            data = new Uint16Array(128*64);
-            for (i = 0; i < 128*64; i++) {
-              data[i] = i;
-            }
-            useData = true;
-            testPattern = false;
-            redrawImage();
-          }
-
-          function onNpotEvenButton(evt) {
-            onNpot(14);
-          }
-
-          function onNpotOddButton(evt) {
-            onNpot(13);
-          }
-
-          function onNpot(size) {
-            var data = new Uint16Array(size * size);
-            for (i = 0; i < size * size; i++) {
-              data[i] = 0;
-            }
-            data[0] = 2048;
-            data[size - 1] = 2048;
-            data[size * (size-1)] = 2048;
-            data[size * size - 1] = 2048;
-
-            adjuster.setImageData(data, size, size);
-            adjuster.drawImage();
-          }
-
-          function onTestPatternButton() {
-            for (i = 0; i < 256; i++) {
-              if ((i & 1) != 0) {
-                lut[i*3] = 255;
-                lut[i*3 + 1] = 0;
-              }
-              else {
-                lut[i*3] = 0;
-                lut[i*3 + 1] = 255;
-              }
-              lut[i*3 + 2] = 0;
-            }
-            testPattern = true;
-            redrawImage();
-          }
-
-          function onImageButton() {
-            useData = false;
-            redrawImage();
-          }
-
         </script>
     </head>
 
     <body onload="start()">
-      <canvas id="glcanvas" width="1024" height="512" style="background: red;">
+      <canvas id="glcanvas" width="1024" height="512" style="background: red; border:1px solid black;">
       Missing canvas support
       </canvas>
       <br/>
+      <fieldset> <legend>Color Adjustment</legend>
       <input id="windowControl" type="range" min="3" max="256" value="256" >Window<br/>
-      <input id="levelControl" type="range" min="0" max="255" value="128" >Level<br/>
-      <input id="TestPatternButton" style="xxdisplay:none" type="button" value="Test Pattern"><br/>
-      <input id="gradientButton" type="button" value="Gradient"><br/>
-      <input id="NPOTEvenButton" type="button" value="NPOT Even"><br/>
-      <input id="NPOTOddButton" type="button" value="NPOT Odd"><br/>
-      <input id="ImageButton" type="button" value="Image">  Note:  Set window / level to the left to show 0-255 values<br/>
-      <input id="invertCheckbox" type="checkbox" value="inverted">Invert<br/>
+      <input id="levelControl" type="range" min="0" max="255" value="128" >Level
+      <br/>
+      <input id="falseColorControl" type="checkbox">False Color<br/>
+      </fieldset>
+
+      <fieldset> <legend>Base Image / Data</legend>
+      <input id="gradientButton" name="baseImage" type="radio" value="Gradient">
+      <label for="gradientButton">16-bit Gradient</label>
+      <br/>
+      <input id="NPOTEvenButton" name="baseImage" type="radio" value="NPOT Even">
+      <label for="gradientButton">NPOT Even</label>
+      <br/>
+      <input id="NPOTOddButton" name="baseImage" type="radio" value="NPOT Odd">
+      <label for="gradientButton">NPOT Odd</label>
+      <br/>
+      <input id="imageButton" name="baseImage" type="radio" checked="checked" value="Image">
+      <label for="imageButton">8-bit image</label>
+      <br/><input id="invertCheckbox" type="checkbox" value="inverted">Invert
+      </fieldset>
+
+
+      <fieldset style="width:22em"> <legend>Overlay</legend>
       <input id="overlayCheckbox" type="checkbox" value="inverted">Enable Overlay<br/>
       <input id="autoAlphaCheckbox" type="checkbox" value="inverted">Enable Auto-alpha<br/>
       <input id="overlaySlider" type="range" min="0" max="100" value="100" >Adjust Overlay Alpha<br/>
+      </fieldset>
     </body>
 
 </html>
