@@ -73,7 +73,7 @@
             }
 
             document.getElementById("gradientButton").
-              addEventListener("click", onSetData(createGradient), false);
+              addEventListener("click", onSetData(createGradient()), false);
             document.getElementById("NPOTEvenButton").
               addEventListener("click", onSetData(createNpot(14)), false);
             document.getElementById("NPOTOddButton").
@@ -86,7 +86,7 @@
             // Set up grayscale gradient
             var gradient = {}
             var data = new Uint16Array(128 * 64)
-            for (i = 0; i < 128*64; i++) {
+            for (var i = 0; i < 128*64; i++) {
               data[i] = i;
             }
             gradient.data = data;
