@@ -30,8 +30,9 @@
             });
 
             canvas.addEventListener("wheel", function(evt) {
-              if (position.zoom + evt.deltaY > 0) {
-                position.zoom = Math.round(position.zoom + evt.deltaY);
+              var deltaY = evt.deltaY > 0 ? 3 : -3;
+              if (position.zoom + deltaY > 0) {
+                position.zoom = Math.round(position.zoom + deltaY);
               }
               redrawImage(position);
             });

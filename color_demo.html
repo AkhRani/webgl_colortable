@@ -133,13 +133,14 @@
               adjuster.setColorTable(lut);
             }
 
-            var invertControl = document.getElementById("invertCheckbox");
             if (useData) {
               adjuster.setData(useData.data, useData.width, useData.height);
             }
             else {
               adjuster.setImage(bgImage);
             }
+
+            var invertControl = document.getElementById("invertCheckbox");
             adjuster.draw(invertControl.checked);
 
             var overlayCheckbox = document.getElementById("overlayCheckbox");
