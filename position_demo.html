@@ -10,54 +10,95 @@
           var adjuster = new ColorAdjuster();
           var baseImage = new Image();
           baseImage.src = "image_1.jpg";
-          var tx = 0;
-          var ty = 0;
-          var zoom = DEFAULT_ZOOM;
-
-          function zoomToScale(z) { return DEFAULT_ZOOM / zoom; }
+          var position = {
+              "tx" : 0,
+              "ty" : 0,
+              "zoom" : DEFAULT_ZOOM,
+            };
+          var targetPos = Object.assign({}, position);
+          function zoomToScale(z) { return DEFAULT_ZOOM / z; }
 
           function start() {
             var canvas = document.getElementById("glcanvas");
             adjuster.init(canvas);
             canvas.addEventListener("mousemove", function(evt) {
               if (evt.buttons === 1) {
-                tx += evt.movementX;
-                ty += evt.movementY;
-                console.log(evt.movementY);
-                redrawImage();
+                position.tx += evt.movementX;
+                position.ty += evt.movementY;
+                redrawImage(position);
               }
             });
 
             canvas.addEventListener("wheel", function(evt) {
-              if (zoom + evt.deltaY > 0) {
-                var oldScale = zoomToScale(zoom);
-                zoom += evt.deltaY;
+              if (position.zoom + evt.deltaY > 0) {
+                position.zoom = Math.round(position.zoom + evt.deltaY);
               }
-              redrawImage();
+              redrawImage(position);
             });
 
-            redrawImage();
+            document.getElementById("captureButton").
+              addEventListener("click", function() {
+                targetPos = Object.assign({}, position);
+                showPosition("Target", targetPos);
+              });
+
+            document.getElementById("animateButton").
+              addEventListener("click", animate);
+
+            redrawImage(position);
           }
 
-          function redrawImage() {
+          function redrawImage(pos) {
+            showPosition("Current", pos);
+            showPosition("Target", targetPos);
+
             adjuster.clear();
             adjuster.setImage(baseImage);
             var canvas = adjuster.canvas;
             // Note:  In a mouse event, moving up results in negative delta Y.
             // GL is the opposite.
-            adjuster.setTranslate(tx / canvas.width, -ty / canvas.height);
-            adjuster.setScale(zoomToScale(zoom));
+            adjuster.setTranslate(pos.tx / canvas.width, -pos.ty / canvas.height);
+            adjuster.setScale(zoomToScale(pos.zoom));
             adjuster.draw(true);
           }
 
+          function showPosition(id, pos) {
+            var pos = id + " x=" + pos.tx + " y=" + pos.ty + " zoom=" + pos.zoom;
+            document.getElementById(id).innerHTML = pos;
+          }
+
+          function tween(a, b, current, max) {
+            // Need to do it this way to bind/snapshot the "current" value
+            return function() {
+              var froma = (max-current)/max;
+              var fromb = current/max;
+              position = {
+                "tx" : a.tx * froma + b.tx * fromb,
+                "ty" : a.ty * froma + b.ty * fromb,
+                "zoom" : a.zoom * froma + b.zoom * fromb,
+              };
+              redrawImage(position);
+            }
+          }
+
+          function animate() {
+            var STEPS = 20;
+            var INTERVAL = 50;
+            for (var i = 1; i < STEPS+1; i++) {
+              window.setTimeout(tween(position, targetPos, i, STEPS), INTERVAL * i);
+            }
+          }
         </script>
     </head>
 
     <body onload="start()">
-      <canvas id="glcanvas" width="512" height="512" style="background: red; border:1px solid black;">
+      <canvas id="glcanvas" width="512" height="512" style="background: red; border:1px solid black; float:left;">
       Missing canvas support
       </canvas>
-      <br/>
+      <div id="Current"></div>
+      <div id="Target"></div>
+      <button id="captureButton">Capture</button>
+      <button id="animateButton">Animate</button>
     </body>
 
 </html>
