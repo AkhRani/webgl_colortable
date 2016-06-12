@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Web GL Positioning</title>
+        <script src="coloradjuster.js"></script>
+        <script>
+          "use strict";
+          var DEFAULT_ZOOM = 100;
+          var adjuster = new ColorAdjuster();
+          var baseImage = new Image();
+          baseImage.src = "image_1.jpg";
+          var tx = 0;
+          var ty = 0;
+          var zoom = DEFAULT_ZOOM;
+
+          function zoomToScale(z) { return DEFAULT_ZOOM / zoom; }
+
+          function start() {
+            var canvas = document.getElementById("glcanvas");
+            adjuster.init(canvas);
+            canvas.addEventListener("mousemove", function(evt) {
+              if (evt.buttons === 1) {
+                tx += evt.movementX;
+                ty += evt.movementY;
+                console.log(evt.movementY);
+                redrawImage();
+              }
+            });
+
+            canvas.addEventListener("wheel", function(evt) {
+              if (zoom + evt.deltaY > 0) {
+                var oldScale = zoomToScale(zoom);
+                zoom += evt.deltaY;
+              }
+              redrawImage();
+            });
+
+            redrawImage();
+          }
+
+          function redrawImage() {
+            adjuster.clear();
+            adjuster.setImage(baseImage);
+            var canvas = adjuster.canvas;
+            // Note:  In a mouse event, moving up results in negative delta Y.
+            // GL is the opposite.
+            adjuster.setTranslate(tx / canvas.width, -ty / canvas.height);
+            adjuster.setScale(zoomToScale(zoom));
+            adjuster.draw(true);
+          }
+
+        </script>
+    </head>
+
+    <body onload="start()">
+      <canvas id="glcanvas" width="512" height="512" style="background: red; border:1px solid black;">
+      Missing canvas support
+      </canvas>
+      <br/>
+    </body>
+
+</html>
+

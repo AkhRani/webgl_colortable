@@ -6,12 +6,20 @@ function ColorAdjuster() {
   this.useLut = false;
   this.useAlpha = false;
   this.autoAlpha = false;
+  // simple transformation
   this.scale = 1.;
   this.translatex = 0.;
   this.translatey = 0.;
+  // general transformation (defaults to identity)
+  this.transform = new Float32Array([
+      1., 0., 0., 0.,           // column 1
+      0., 1., 0., 0.,           // column 2
+      0., 0., 1., 0.,           // column 3
+      0., 0., 0., 1.]);         // column 4 (translate)
   this.globalAlpha = 1.;
   this.windowBegin = 0;
   this.windowEnd = 0;
+  this.canvas = null;
 
   // GL Attribute IDs
   this.vertexPosition = null;
@@ -20,6 +28,7 @@ function ColorAdjuster() {
   // GL Uniform IDs
   this.imageSampler = null;
   this.lutSampler = null;
+  this.uModelMatrix = null;
   this.uGrayscale = null;
   this.uCustomColors = null;
   this.uWinBegin = null;
@@ -45,6 +54,7 @@ function ColorAdjuster() {
  * passing in a canvas element to display the image on.
  * This function must be called before the other functions. */
 ColorAdjuster.prototype.init = function(canvas) {
+  this.canvas = canvas;
   this.gl = initWebGL(canvas);
   if (this.gl) {
     this.initShaders();
@@ -194,6 +204,7 @@ ColorAdjuster.prototype.draw = function(invert) {
   }
 
   gl.uniform1i(this.uGrayscale, this.colorBits === 16);
+  gl.uniformMatrix4fv(this.uModelMatrix, false, this.transform);
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
@@ -366,6 +377,7 @@ ColorAdjuster.prototype.initShaders = function() {
   this.imageSampler = gl.getUniformLocation(program, "uImageSampler");
   this.lutSampler = gl.getUniformLocation(program, "uLutSampler");
   this.uGrayscale = gl.getUniformLocation(program, "uGrayscale");
+  this.uModelMatrix = gl.getUniformLocation(program, "uModelMatrix");
   this.uCustomColors = gl.getUniformLocation(program, "uCustomColors");
   this.uWindow = gl.getUniformLocation(program, "uWindow");
   this.uWinBegin = gl.getUniformLocation(program, "uWinBegin");
@@ -396,12 +408,14 @@ ColorAdjuster.prototype.doSetColorTable = function (data) {
 /*******************/
 var g_vertexShader = "\
     #version 100\n\
+    uniform mat4 uModelMatrix;\
     attribute vec3 aVertexPosition;\
     attribute vec2 aTextureCoord;\
     varying highp vec2 vTextureCoord;\
     \
     void main(void) {\
       gl_Position = vec4(aVertexPosition, 1.0);\
+      gl_Position = uModelMatrix * gl_Position;\
       vTextureCoord = aTextureCoord;\
     }\
     ";
