@@ -24,18 +24,42 @@ function MatrixMult(a, b) {
   return c;
 }
 
-function ScaleMatrix(x, y) {
+function ScaleMatrix(x, y, z) {
+  // optional z argument
+  z = typeof(z) === "number" ? z:1.;
   return new Float32Array([
       x,  0., 0., 0.,
       0., y,  0., 0.,
-      0., 0., 1., 0.,
+      0., 0., z,  0.,
       0., 0., 0., 1.]);
 }
 
-function TranslateMatrix(x, y) {
+function TranslateMatrix(x, y, z) {
+  // optional z argument
+  z = typeof(z) === "number" ? z:0.;
   return new Float32Array([
       1., 0., 0., 0.,
       0., 1., 0., 0.,
       0., 0., 1., 0.,
-      x,  y,  0., 1.]);
+      x,  y,  z,  1.]);
+}
+
+function SimpleFrustum(width, height, z_near, z_far) {
+  return new Float32Array([
+      z_near/(width/2),  0., 0., 0.,
+      0., z_near/(height/2), 0., 0.,
+      0., 0., -(z_far + z_near) / (z_far - z_near), -1.0,
+      0., 0., 2*z_near*z_far / (z_far-z_near), 0.
+      ]);
+}
+
+function Frustum(x_left, x_right, y_bottom, y_top, z_near, z_far) {
+  var width = x_right - x_left;
+  var height = y_top - y_bottom;
+  return new Float32Array([
+      z_near/(width/2),  0., 0., 0.,
+      0., z_near/(height/2), 0., 0.,
+      (x_left + x_right) / (width/2), (y_top + y_bottom) / (height/2), -(z_far+z_near)/(z_far-z_near), -1.0,
+      0., 0., 2*z_near*z_far / (z_far-z_near), 0.
+      ]);
 }

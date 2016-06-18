@@ -16,6 +16,26 @@ function ColorAdjuster() {
       0., 1., 0., 0.,           // column 2
       0., 0., 1., 0.,           // column 3
       0., 0., 0., 1.]);         // column 4 (translate)
+
+  // Simple Frustum
+  // z_near = .2, z_far = 10., width = height = .2
+  this.view = new Float32Array([
+      .1/(.2/2),  0., 0., 0.,
+      0., .1/(.2/2), 0., 0.,
+      0., 0., -(10. + .2) / (10. - .2), -1.0,
+      0., 0., -2*10.*.2 / (10. - .2), 0.
+      ]);
+
+  // Orthographic
+  /*
+  this.view = new Float32Array([
+      1., 0., 0., 0.,
+      0., 1., 0., 0.,
+      0., 0., -2 / (10. - 1.), -1.0,
+      0., 0., -(10. + 1.) / (10. - 1.), 0.
+      ]);
+      */
+
   this.globalAlpha = 1.;
   this.windowBegin = 0;
   this.windowEnd = 0;
@@ -29,6 +49,7 @@ function ColorAdjuster() {
   this.imageSampler = null;
   this.lutSampler = null;
   this.uModelMatrix = null;
+  this.uViewMatrix = null;
   this.uGrayscale = null;
   this.uCustomColors = null;
   this.uWinBegin = null;
@@ -145,6 +166,10 @@ ColorAdjuster.prototype.setTranslate = function(x, y) {
   this.translatey = y * 2;
 }
 
+ColorAdjuster.prototype.setTransform = function(transform) {
+  this.transform = transform;
+}
+
 ColorAdjuster.prototype.clear = function() {
   var gl = this.gl;
   if (!gl)
@@ -205,6 +230,7 @@ ColorAdjuster.prototype.draw = function(invert) {
 
   gl.uniform1i(this.uGrayscale, this.colorBits === 16);
   gl.uniformMatrix4fv(this.uModelMatrix, false, this.transform);
+  gl.uniformMatrix4fv(this.uViewMatrix, false, this.view);
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
@@ -269,10 +295,10 @@ ColorAdjuster.prototype.initBuffers = function()
   // Create JS array to hold vertex screen coordinates
   // Default GL screen coordinate system.  [-1,1] in each dimension
   var square = [
-    -1.0, -1.0, 0.0,      // bottom left
-    -1.0, 1.0, 0.0,       // top left
-    1.0, -1.0, 0.0,       // bottom right
-    1.0, 1.0, 0.0         // top right
+    -1.0, -1.0, -.5,      // bottom left
+    -1.0, 1.0, -.5,       // top left
+    1.0, -1.0, -.5,       // bottom right
+    1.0, 1.0, -.5         // top right
       ]
   this.squareArray = new Float32Array(square);
 
@@ -378,6 +404,7 @@ ColorAdjuster.prototype.initShaders = function() {
   this.lutSampler = gl.getUniformLocation(program, "uLutSampler");
   this.uGrayscale = gl.getUniformLocation(program, "uGrayscale");
   this.uModelMatrix = gl.getUniformLocation(program, "uModelMatrix");
+  this.uViewMatrix = gl.getUniformLocation(program, "uViewMatrix");
   this.uCustomColors = gl.getUniformLocation(program, "uCustomColors");
   this.uWindow = gl.getUniformLocation(program, "uWindow");
   this.uWinBegin = gl.getUniformLocation(program, "uWinBegin");
@@ -409,13 +436,13 @@ ColorAdjuster.prototype.doSetColorTable = function (data) {
 var g_vertexShader = "\
     #version 100\n\
     uniform mat4 uModelMatrix;\
+    uniform mat4 uViewMatrix;\
     attribute vec3 aVertexPosition;\
     attribute vec2 aTextureCoord;\
     varying highp vec2 vTextureCoord;\
     \
     void main(void) {\
-      gl_Position = vec4(aVertexPosition, 1.0);\
-      gl_Position = uModelMatrix * gl_Position;\
+      gl_Position = uViewMatrix * uModelMatrix * vec4(aVertexPosition, 1.0);\
       vTextureCoord = aTextureCoord;\
     }\
     ";

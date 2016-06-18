@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Web GL Positioning</title>
+        <script src="simplematrix.js"></script>
+        <script src="coloradjuster.js"></script>
+        <script>
+          "use strict";
+          var DEFAULT_ZOOM = 100;
+          var adjuster = new ColorAdjuster();
+          var baseImage = new Image();
+          baseImage.src = "image_1.jpg";
+          var position = {
+              "x" : 0.,
+              "y" : 0.,
+              "z" : 0.,
+            };
+          var targetPos = Object.assign({}, position);
+          function zoomToScale(z) { return DEFAULT_ZOOM / z; }
+
+          function start() {
+            var canvas = document.getElementById("glcanvas");
+            adjuster.init(canvas);
+            canvas.addEventListener("mousemove", function(evt) {
+              if (evt.buttons === 1) {
+                // we're moving the eye, not the image, so reverse the motion
+                position.x -= evt.movementX;
+                position.y -= evt.movementY;
+                redrawImage(position);
+              }
+            });
+
+            canvas.addEventListener("wheel", function(evt) {
+              var newZ = position.z + (evt.deltaY > 0 ? -.1 : .1);
+              console.log(newZ);
+              if (newZ <= .2 && newZ >= -1.5) {
+                position.z = newZ;
+                redrawImage(position);
+              }
+            });
+
+            document.getElementById("captureButton").
+              addEventListener("click", function() {
+                targetPos = Object.assign({}, position);
+                showPosition("Target", targetPos);
+              });
+
+            document.getElementById("animateButton").
+              addEventListener("click", animate);
+
+            redrawImage(position);
+          }
+
+          function redrawImage(pos) {
+            showPosition("Current", pos);
+            showPosition("Target", targetPos);
+
+            adjuster.clear();
+            adjuster.setImage(baseImage);
+            var canvas = adjuster.canvas;
+
+            // Note:  In a mouse event, moving up results in negative delta Y.
+            // GL is the opposite.
+            var xlate = TranslateMatrix(
+              -pos.x / canvas.width,
+              pos.y / canvas.height,
+              pos.z);
+            adjuster.setTransform(xlate);
+            adjuster.draw(true);
+          }
+
+          function showPosition(id, pos) {
+            var pos = id + " x=" + pos.x + " y=" + pos.y + " z=" + pos.z;
+            document.getElementById(id).innerHTML = pos;
+          }
+
+          function tween(a, b, current, max) {
+            // Need to do it this way to bind/snapshot the "current" value
+            return function() {
+              var froma = (max-current)/max;
+              var fromb = current/max;
+              position = {
+                "x" : a.x * froma + b.x * fromb,
+                "y" : a.y * froma + b.y * fromb,
+                "z" : a.z * froma + b.z * fromb,
+              };
+              redrawImage(position);
+            }
+          }
+
+          function animate() {
+            var STEPS = 20;
+            var INTERVAL = 50;
+            for (var i = 1; i < STEPS+1; i++) {
+              window.setTimeout(tween(position, targetPos, i, STEPS), INTERVAL * i);
+            }
+          }
+        </script>
+    </head>
+
+    <body onload="start()">
+      <canvas id="glcanvas" width="512" height="512" style="background: red; border:1px solid black; float:left;">
+      Missing canvas support
+      </canvas>
+      <div id="Current"></div>
+      <div id="Target"></div>
+      <button id="captureButton">Capture</button>
+      <button id="animateButton">Animate</button>
+    </body>
+
+</html>
+
