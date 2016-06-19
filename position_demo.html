@@ -65,9 +65,7 @@
             adjuster.clear();
             adjuster.setImage(baseImage);
             var canvas = adjuster.canvas;
-            // Note:  In a mouse event, moving up results in negative delta Y.
-            // GL is the opposite.
-            adjuster.setTranslate(pos.tx / canvas.width, -pos.ty / canvas.height);
+            adjuster.setTranslate(pos.tx / canvas.width, pos.ty / canvas.height);
             adjuster.setScale(zoomToScale(pos.zoom));
             adjuster.draw(true);
           }
