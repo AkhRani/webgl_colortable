@@ -58,20 +58,43 @@
             redrawImage(position);
           }
 
+          function clampT(size, scale, t) {
+            var maxT = (size * scale - size) / 2;
+            if (t < -maxT) return -maxT;
+            if (t > maxT) return maxT;
+            return t;
+          }
+
+          function clampPosition(canvas, pos) {
+            if (pos.zoom > DEFAULT_ZOOM) {
+              pos.zoom = DEFAULT_ZOOM;
+            }
+            var scale = zoomToScale(pos.zoom);
+            pos.tx = clampT(canvas.width, scale, pos.tx);
+            pos.ty = clampT(canvas.height, scale, pos.ty);
+          }
+
           function redrawImage(pos) {
+            var clamp = document.getElementById("clampControl").checked;
+            if (clamp) {
+              clampPosition(adjuster.canvas, pos);
+            }
             showPosition("Current", pos);
             showPosition("Target", targetPos);
 
             adjuster.clear();
             adjuster.setImage(baseImage);
             var canvas = adjuster.canvas;
-            adjuster.setTranslate(pos.tx / canvas.width, pos.ty / canvas.height);
+            adjuster.setTranslate(pos.tx/canvas.width, pos.ty/canvas.height);
             adjuster.setScale(zoomToScale(pos.zoom));
             adjuster.draw(true);
           }
 
           function showPosition(id, pos) {
-            var pos = id + " x=" + pos.tx + " y=" + pos.ty + " zoom=" + pos.zoom;
+            var pos = id +
+              " x=" + Number(pos.tx).toFixed(2) +
+              " y=" + Number(pos.ty).toFixed(2) +
+              " zoom=" + pos.zoom;
             document.getElementById(id).innerHTML = pos;
           }
 
@@ -93,7 +116,9 @@
             var STEPS = 20;
             var INTERVAL = 50;
             for (var i = 1; i < STEPS+1; i++) {
-              window.setTimeout(tween(position, targetPos, i, STEPS), INTERVAL * i);
+              window.setTimeout(
+                tween(position, targetPos, i, STEPS),
+                INTERVAL * i);
             }
           }
         </script>
@@ -107,6 +132,7 @@
       <div id="Target"></div>
       <button id="captureButton">Capture</button>
       <button id="animateButton">Animate</button>
+      <input id="clampControl" type="checkbox">Clamp to edge<br/>
     </body>
 
 </html>
