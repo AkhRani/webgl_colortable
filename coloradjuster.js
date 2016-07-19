@@ -10,6 +10,7 @@ function ColorAdjuster() {
   this.scale = 1.;
   this.translatex = 0.;
   this.translatey = 0.;
+  this.rotateRadians = 0.;
   // general transformation (defaults to identity)
   this.transform = new Float32Array([
       1., 0., 0., 0.,           // column 1
@@ -17,24 +18,24 @@ function ColorAdjuster() {
       0., 0., 1., 0.,           // column 3
       0., 0., 0., 1.]);         // column 4 (translate)
 
-  // Simple Frustum
+  // Simple Frustum (perspective)
   // z_near = .2, z_far = 10., width = height = .2
+  /*
   this.view = new Float32Array([
       .1/(.2/2),  0., 0., 0.,
       0., .1/(.2/2), 0., 0.,
       0., 0., -(10. + .2) / (10. - .2), -1.0,
       0., 0., -2*10.*.2 / (10. - .2), 0.
       ]);
+      */
 
-  // Orthographic
-  /*
+  // Orthographic (no perspective, all Z => 0)
   this.view = new Float32Array([
       1., 0., 0., 0.,
       0., 1., 0., 0.,
-      0., 0., -2 / (10. - 1.), -1.0,
-      0., 0., -(10. + 1.) / (10. - 1.), 0.
+      0., 0., 0., 0.,
+      0., 0., 0., 1.,
       ]);
-      */
 
   this.globalAlpha = 1.;
   this.windowBegin = 0;
@@ -166,6 +167,14 @@ ColorAdjuster.prototype.setTranslate = function(x, y) {
   this.translatey = y * 2;
 }
 
+ColorAdjuster.prototype.setRotateDegrees = function(deg) {
+  this.setRotateRadians(deg / 180. * Math.PI);
+}
+
+ColorAdjuster.prototype.setRotateRadians = function(radians) {
+  this.rotateRadians = radians;
+}
+
 ColorAdjuster.prototype.setTransform = function(transform) {
   this.transform = transform;
 }
@@ -193,17 +202,7 @@ ColorAdjuster.prototype.draw = function(invert) {
   // Copy screen coordinates to GL
   gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
 
-  // Apply scale and translation
-  var scale = this.scale;
-  var view = this.squareArray.map(function(x) { return x * scale });
-  var i;
-  for (i = 0; i < 4; i++) {
-    view[i*3] += this.translatex;
-    // Change sign to convert from browser to gl coordinate space
-    view[i*3 + 1] -= this.translatey;
-  }
-
-  gl.bufferData(gl.ARRAY_BUFFER, view, gl.STATIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, this.squareArray, gl.STATIC_DRAW);
   gl.vertexAttribPointer(this.vertexPosition, 3, gl.FLOAT, false, 0, 0);
 
   // Copy texture coordinates to GL
@@ -230,7 +229,20 @@ ColorAdjuster.prototype.draw = function(invert) {
   }
 
   gl.uniform1i(this.uGrayscale, this.colorBits === 16);
-  gl.uniformMatrix4fv(this.uModelMatrix, false, this.transform);
+
+  // either translate / zoom / rotate or transform, but not both
+  if (this.scale !== 1.0 ||
+      this.translatex !== 0.0 || this.translatey !== 0 ||
+      this.rotateRadians !== 0.0) {
+    var transform = ScaleMatrix(this.scale, this.scale);
+    transform = MatrixMult(
+        TranslateMatrix(this.translatex, -this.translatey), transform);
+    transform = MatrixMult(transform, RotateMatrix(this.rotateRadians));
+    gl.uniformMatrix4fv(this.uModelMatrix, false, transform);
+  }
+  else {
+    gl.uniformMatrix4fv(this.uModelMatrix, false, this.transform);
+  }
   gl.uniformMatrix4fv(this.uViewMatrix, false, this.view);
 
   gl.activeTexture(gl.TEXTURE0);

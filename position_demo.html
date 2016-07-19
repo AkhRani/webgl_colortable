@@ -3,6 +3,7 @@
     <head>
         <meta charset="UTF-8">
         <title>Web GL Positioning</title>
+        <script src="simplematrix.js"></script>
         <script src="coloradjuster.js"></script>
         <script>
           "use strict";
@@ -13,6 +14,7 @@
           var position = {
               "tx" : 0,
               "ty" : 0,
+              "deg" : 0,
               "zoom" : DEFAULT_ZOOM,
             };
           var targetPos = Object.assign({}, position);
@@ -25,6 +27,10 @@
               if (evt.buttons === 1) {
                 position.tx += evt.movementX;
                 position.ty += evt.movementY;
+                redrawImage(position);
+              } else if (evt.buttons === 4) {
+                position.deg += evt.movementX;
+                console.log(position.deg);
                 redrawImage(position);
               }
             });
@@ -87,6 +93,7 @@
             var canvas = adjuster.canvas;
             adjuster.setTranslate(pos.tx/canvas.width, pos.ty/canvas.height);
             adjuster.setScale(zoomToScale(pos.zoom));
+            adjuster.setRotateDegrees(pos.deg);
             adjuster.draw(true);
           }
 
@@ -94,6 +101,7 @@
             var pos = id +
               " x=" + Number(pos.tx).toFixed(2) +
               " y=" + Number(pos.ty).toFixed(2) +
+              " deg=" + Number(pos.deg).toFixed(2) +
               " zoom=" + pos.zoom;
             document.getElementById(id).innerHTML = pos;
           }
@@ -106,6 +114,7 @@
               position = {
                 "tx" : a.tx * froma + b.tx * fromb,
                 "ty" : a.ty * froma + b.ty * fromb,
+                "deg" : a.deg * froma + b.deg * fromb,
                 "zoom" : a.zoom * froma + b.zoom * fromb,
               };
               redrawImage(position);

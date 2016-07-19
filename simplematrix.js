@@ -44,6 +44,17 @@ function TranslateMatrix(x, y, z) {
       x,  y,  z,  1.]);
 }
 
+function RotateMatrix(radians) {
+  // For now, only rotate around z axis
+  var sin = Math.sin(radians);
+  var cos = Math.cos(radians);
+  return new Float32Array([
+      cos,  sin, 0., 0.,
+      -sin, cos,  0., 0.,
+      0., 0., 1.,  0.,
+      0., 0., 0., 1.]);
+}
+
 function SimpleFrustum(width, height, z_near, z_far) {
   return new Float32Array([
       z_near/(width/2),  0., 0., 0.,
