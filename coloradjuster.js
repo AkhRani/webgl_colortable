@@ -199,7 +199,8 @@ ColorAdjuster.prototype.draw = function(invert) {
   var i;
   for (i = 0; i < 4; i++) {
     view[i*3] += this.translatex;
-    view[i*3 + 1] += this.translatey;
+    // Change sign to convert from browser to gl coordinate space
+    view[i*3 + 1] -= this.translatey;
   }
 
   gl.bufferData(gl.ARRAY_BUFFER, view, gl.STATIC_DRAW);
