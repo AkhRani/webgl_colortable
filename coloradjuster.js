@@ -7,7 +7,8 @@ function ColorAdjuster() {
   this.useAlpha = false;
   this.autoAlpha = false;
   // simple transformation
-  this.scale = 1.;
+  this.scalex = 1.;
+  this.scaley = 1.;
   this.translatex = 0.;
   this.translatey = 0.;
   this.rotateRadians = 0.;
@@ -28,14 +29,6 @@ function ColorAdjuster() {
       0., 0., -2*10.*.2 / (10. - .2), 0.
       ]);
       */
-
-  // Orthographic (no perspective, all Z => 0)
-  this.view = new Float32Array([
-      1., 0., 0., 0.,
-      0., 1., 0., 0.,
-      0., 0., 0., 0.,
-      0., 0., 0., 1.,
-      ]);
 
   this.globalAlpha = 1.;
   this.windowBegin = 0;
@@ -159,7 +152,16 @@ ColorAdjuster.prototype.setAlpha = function(global, auto) {
 }
 
 ColorAdjuster.prototype.setScale = function(scale) {
-  this.scale = scale;
+  this.scalex = scale;
+  this.scaley = scale;
+}
+
+ColorAdjuster.prototype.setScaleX = function(scale) {
+  this.scalex = scale;
+}
+
+ColorAdjuster.prototype.setScaleY = function(scale) {
+  this.scaley = scale;
 }
 
 ColorAdjuster.prototype.setTranslate = function(x, y) {
@@ -190,7 +192,7 @@ ColorAdjuster.prototype.clear = function() {
 }
 
 /* draw the image / overlay */
-ColorAdjuster.prototype.draw = function(invert) {
+ColorAdjuster.prototype.draw = function(invert, mirror) {
   "use strict";
   var gl = this.gl;
   if (!gl)
@@ -198,6 +200,14 @@ ColorAdjuster.prototype.draw = function(invert) {
 
   // In case clear was not called
   gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+
+  // Orthographic (no perspective, all Z => 0)
+  var view = new Float32Array([
+      gl.drawingBufferHeight / gl.drawingBufferWidth, 0., 0., 0.,
+      0., 1., 0., 0.,
+      0., 0., 0., 0.,
+      0., 0., 0., 1.,
+      ]);
 
   // Copy screen coordinates to GL
   gl.bindBuffer(gl.ARRAY_BUFFER, this.squareVerticesBuffer);
@@ -207,12 +217,7 @@ ColorAdjuster.prototype.draw = function(invert) {
 
   // Copy texture coordinates to GL
   gl.bindBuffer(gl.ARRAY_BUFFER, this.textureCoordBuffer);
-  if (invert) {
-    gl.bufferData(gl.ARRAY_BUFFER, this.invertedTextureCoords, gl.STATIC_DRAW);
-  }
-  else {
-    gl.bufferData(gl.ARRAY_BUFFER, this.normalTextureCoords, gl.STATIC_DRAW);
-  }
+  gl.bufferData(gl.ARRAY_BUFFER, this.normalTextureCoords, gl.STATIC_DRAW);
   gl.vertexAttribPointer(this.textureCoord, 2, gl.FLOAT, false, 0, 0);
 
   if (this.useAlpha) {
@@ -231,19 +236,37 @@ ColorAdjuster.prototype.draw = function(invert) {
   gl.uniform1i(this.uGrayscale, this.colorBits === 16);
 
   // either translate / zoom / rotate or transform, but not both
-  if (this.scale !== 1.0 ||
+  if (this.scalex !== 1.0 || this.scaley != 1.0 ||
       this.translatex !== 0.0 || this.translatey !== 0 ||
       this.rotateRadians !== 0.0) {
-    var transform = ScaleMatrix(this.scale, this.scale);
+    /*
+    var transform = ScaleMatrix(this.scalex, this.scaley);
     transform = MatrixMult(
         TranslateMatrix(this.translatex, -this.translatey), transform);
     transform = MatrixMult(transform, RotateMatrix(this.rotateRadians));
     gl.uniformMatrix4fv(this.uModelMatrix, false, transform);
+    */
+    var translateMat = TranslateMatrix(this.translatex, -this.translatey);
+    var rotateMat = RotateMatrix(this.rotateRadians);
+    var scaleMat = ScaleMatrix(
+        this.scalex * (mirror ? -1 : 1),
+        this.scaley * (invert ? -1 : 1));
+    var transform = MatrixMult(translateMat, rotateMat);
+    var transform = MatrixMult(transform, scaleMat);
+
+    gl.uniformMatrix4fv(this.uModelMatrix, false, transform);
   }
   else {
-    gl.uniformMatrix4fv(this.uModelMatrix, false, this.transform);
+    if (invert || mirror) {
+      var transform = MatrixMult(this.transform,
+          ScaleMatrix(mirror ? -1 : 1, invert ? -1 : 1));
+      gl.uniformMatrix4fv(this.uModelMatrix, false, transform);
+    }
+    else {
+      gl.uniformMatrix4fv(this.uModelMatrix, false, this.transform);
+    }
   }
-  gl.uniformMatrix4fv(this.uViewMatrix, false, this.view);
+  gl.uniformMatrix4fv(this.uViewMatrix, false, view);
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
@@ -268,7 +291,8 @@ ColorAdjuster.prototype.draw = function(invert) {
   this.useAlpha = false;
   this.useWindow = false;
   this.useLut = false;
-  this.scale = 1.;
+  this.scalex = 1.;
+  this.scaley = 1.;
   this.translatex = 0.;
   this.translatey = 0.;
 }
@@ -350,8 +374,8 @@ ColorAdjuster.prototype.initTextures = function() {
   // In the case of an 8-bit image, this will contain normal RGBA data.
   this.baseTexture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, this.baseTexture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
