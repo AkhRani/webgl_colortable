@@ -454,7 +454,7 @@ var g_fragmentShader = "\
       } else { \
         vec4 color = texture2D(uImageSampler, vTextureCoord); \
         /* Remap grayscale */ \
-        if (color.r == color.g && color.r == color.b) { \
+        if (abs(color.r - color.g) + abs(color.r - color.b) <= 2.) { \
           if (uWindow && uWinEnd > uWinBegin) { \
             float value = color.r * 255.; \
             value = clamp((value - uWinBegin) / (uWinEnd - uWinBegin), 0.0, 1.0); \
