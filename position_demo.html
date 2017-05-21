@@ -31,7 +31,8 @@
             adjuster.init(canvas);
             canvas.addEventListener("mousemove", function(evt) {
               if (evt.buttons === 1) {
-                position.tx += evt.movementX;
+                var aspect_ratio = canvas.width / canvas.height;
+                position.tx += evt.movementX * aspect_ratio;
                 position.ty += evt.movementY;
                 redrawImage(position);
               } else if (evt.buttons === 4) {
@@ -70,8 +71,8 @@
             redrawImage(position);
           }
 
-          function clampT(size, scale, t) {
-            var maxT = (size * scale - size) / 2;
+          function clampT(size, scale, ar, t) {
+            var maxT = ar * (size * scale - size) / 2;
             if (t < -maxT) return -maxT;
             if (t > maxT) return maxT;
             return t;
@@ -82,8 +83,9 @@
               pos.zoom = DEFAULT_ZOOM;
             }
             var scale = zoomToScale(pos.zoom);
-            pos.tx = clampT(canvas.width, scale, pos.tx);
-            pos.ty = clampT(canvas.height, scale, pos.ty);
+            var aspect_ratio = canvas.width / canvas.height;
+            pos.tx = clampT(canvas.width, scale, aspect_ratio, pos.tx);
+            pos.ty = clampT(canvas.height, scale, 1., pos.ty);
           }
 
           function redrawImage(pos) {
@@ -98,9 +100,9 @@
             adjuster.setImage(baseImage);
             var canvas = adjuster.canvas;
             adjuster.setTranslate(pos.tx/canvas.width, pos.ty/canvas.height);
-            var ratio = 4./3.;
+            var aspect_ratio = canvas.width / canvas.height;
             adjuster.setScaleY(zoomToScale(pos.zoom));
-            adjuster.setScaleX(zoomToScale(pos.zoom) * ratio);
+            adjuster.setScaleX(zoomToScale(pos.zoom) * aspect_ratio);
             adjuster.setRotateDegrees(pos.deg);
             adjuster.draw(
               document.getElementById("invertControl").checked,
